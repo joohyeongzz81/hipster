@@ -1,6 +1,6 @@
 # Hipster 프로젝트 컨벤션 가이드
 
-본 문서는 Hipster 프로젝트의 원활한 협업을 위한 커밋 메시지 및 코딩 컨벤션을 정의합니다. 모든 팀원은 아래 규칙을 숙지하고 준수해야 합니다.
+본 문서는 Hipster 프로젝트의 원활한 협업을 위한 커밋 메시지, 코딩, 패키지 구조에 대한 규칙을 정의합니다. 모든 팀원은 본 문서를 숙지하고 준수해야 합니다.
 
 ---
 
@@ -10,31 +10,17 @@
 
 ### 1.1. 커밋 메시지 형식
 
-모든 커밋 메시지는 아래와 같은 형식으로 작성하며, 제목과 본문을 포함할 수 있습니다.
-
 ```
 type(scope): subject
-<BLANK LINE>
-body
-<BLANK LINE>
-footer
 ```
 
-- **type**: 커밋의 종류를 나타냅니다. (아래 타입 목록 참고)
-- **scope**: 변경된 코드의 범위를 나타냅니다. (선택 사항)
-- **subject**: 커밋에 대한 간결한 요약입니다.
-- **body**: 커밋의 상세 내용, '무엇을, 왜' 변경했는지 설명합니다. (선택 사항)
-- **footer**: 이슈 트래커 ID 등을 명시합니다. (선택 사항)
+- **type**: 커밋의 종류 (feat, fix, docs, style, refactor, test, chore)
+- **scope**: 변경된 코드의 범위 (선택 사항)
+- **subject**: 커밋에 대한 간결한 요약
 
-**예시:**
-```
-feat(auth): Google OAuth2 로그인 기능 구현
-
-- 사용자는 Google 계정을 통해 서비스에 가입하고 로그인할 수 있습니다.
-- OAuth2 프로토콜을 준수하여 Access Token 및 Refresh Token을 발급합니다.
-
-Closes #21
-```
+**[규칙]**
+- 제목은 50자 이내, **한글**로 작성하며 현재형/명령문으로 서술합니다.
+- 본문에는 '무엇을, 왜' 변경했는지 상세히 기술합니다.
 
 ### 1.2. Type 종류
 
@@ -48,50 +34,83 @@ Closes #21
 | **test**  | 테스트 코드 추가 또는 수정         |
 | **chore** | 빌드, 패키지 매니저 등 기타 잡일     |
 
-### 1.3. 규칙
-
-- **언어**: 커밋 메시지는 **한글**로 작성하는 것을 원칙으로 합니다.
-- **제목(Subject)**:
-  - 50자 이내로 간결하게 작성합니다.
-  - "Fixed", "Added"와 같은 과거형이 아닌 **현재형 또는 명령문**으로 작성합니다.
-  - 마침표로 끝나지 않습니다.
-- **본문(Body)**:
-  - 선택 사항이지만, 변경 내용이 복잡할 경우 상세히 작성합니다.
-  - 어떻게(How)보다는 **무엇을(What), 왜(Why)** 변경했는지에 초점을 맞춰 설명합니다.
-  - 한 줄의 길이는 72자를 넘지 않도록 합니다.
-
 ---
 
 ## 2. 코딩 컨벤션 (Coding Convention)
 
-본 프로젝트는 **Java 21** 및 **Spring Boot 3.4** 환경에 최적화된 코딩 컨벤션을 따릅니다.
-기본적으로 [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)를 준수하되, 아래 추가 규칙을 적용합니다.
+기본적으로 [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)를 따르며, 아래 규칙들을 추가로 적용합니다.
 
 ### 2.1. JavaDoc
+- 모든 `public` 메서드에 JavaDoc을 다는 것을 지양합니다.
+- 복잡한 비즈니스 로직이나, 파라미터/반환값에 대한 설명이 반드시 필요한 **핵심 API**에 한해서만 작성을 권장합니다.
 
-- 모든 `public` 클래스와 메서드 상단에는 JavaDoc을 작성하여 기능, 파라미터, 반환 값 등을 명확히 설명합니다.
-- 복잡한 내부 로직이나 비즈니스 규칙이 포함된 `protected`, `private` 메서드에도 필요에 따라 JavaDoc을 작성할 수 있습니다.
+### 2.2. 불변성(Immutability) 우선
+- **DTO**: 불변 데이터 객체(DTO)에는 `record` 타입을 적극적으로 사용하여 Boilerplate 코드를 줄이고 데이터 불변성을 보장합니다.
+- **변수**: 재할당이 필요 없는 모든 변수(지역 변수, 필드)에는 `final` 키워드를 사용합니다.
+- **컬렉션**: 정적 컬렉션 생성 시 `List.of()`, `Set.of()` 등을 사용해 불변 컬렉션을 만듭니다.
 
-### 2.2. Entity 설계
+### 2.3. 함수형 프로그래밍 스타일
+- **Stream API**: 단순 `for-loop` 보다는 데이터 처리의 의도가 명확히 드러나는 Stream API 사용을 지향합니다.
+- **Optional**: `null`을 반환할 가능성이 있는 메서드는 `Optional<T>`을 반환하여, 호출하는 쪽에서 NPE 처리를 강제하도록 합니다.
 
-- **@Setter 사용 금지**: 객체의 일관성과 불변성을 유지하기 위해 Entity 클래스 내에서 `@Setter` 사용을 금지합니다.
-- **생성자를 통한 초기화**: 모든 필드는 생성자(Constructor)를 통해 주입하고 초기화합니다. 객체 생성 시점에 필요한 모든 값이 주입되도록 하여 완전한 상태의 객체를 만듭니다.
-- **상태 변경**: Entity의 상태 변경이 필요한 경우, 비즈니스 로직을 담은 명시적인 이름의 메서드를 추가하여 처리합니다. (예: `cancelOrder()`, `updateProfile()`)
+### 2.4. Entity 설계
+- **@Setter 금지**: Entity의 일관성 유지를 위해 `@Setter` 사용을 금지하고, 생성자나 비즈니스 메서드를 통해 상태를 변경합니다.
+- **지연 로딩**: 모든 연관관계는 N+1 문제 방지를 위해 `FetchType.LAZY`를 기본으로 사용합니다.
 
-### 2.3. JPA (Java Persistence API)
+### 2.5. 설정 정보 관리
+- `@ConfigurationProperties`를 사용하여 관련 설정들을 하나의 `record` 또는 클래스로 묶어 타입-안전하게 관리합니다. `@Value`의 사용은 지양합니다.
 
-- **지연 로딩(Lazy Loading)**: 모든 연관관계는 `FetchType.LAZY`로 설정하여 불필요한 즉시 로딩을 방지하고 성능을 최적화합니다.
-- **연관관계 편의 메서드**: 양방향 연관관계를 설정할 경우, 두 객체의 참조를 모두 업데이트하는 편의 메서드를 작성하여 참조 무결성을 유지합니다. (예: `Post` 클래스의 `addComment(Comment comment)`)
+---
 
-### 2.4. 롬복 (Lombok)
+## 3. 패키지 및 폴더 구조 (Package & Directory Structure)
 
-- 과도한 Lombok 사용은 코드의 가독성을 해칠 수 있습니다. 아래 어노테이션 위주로 제한적으로 사용합니다.
-  - **`@Getter`**: 필드의 Getter 메서드를 자동 생성합니다.
-  - **`@NoArgsConstructor(access = AccessLevel.PROTECTED)`**: JPA 프록시 기술 등을 위해 기본 생성자가 필요한 경우 사용하며, 무분별한 객체 생성을 막기 위해 `protected` 접근 제어자를 사용합니다.
-  - **`@ToString`**: 디버깅 목적으로 사용하되, 순환 참조가 발생하지 않도록 `exclude` 속성을 적절히 활용합니다.
-  - `@EqualsAndHashCode`, `@Data` 등은 잠재적인 문제를 야기할 수 있으므로 사용을 지양합니다.
+프로젝트는 도메인 중심의 계층형 아키텍처(Layered Architecture)를 따릅니다.
 
-### 2.5. 객체지향 설계
+### 3.1. 최상위 패키지 규칙
+- **기본 경로**: `com.hipster.{domain_name}`
+- **원칙**: 기능(Feature) 및 도메인별로 패키지를 최상위에서 분리합니다.
+- **예시**:
+  - `com.hipster.album`: 앨범 관련 모든 로직
+  - `com.hipster.user`: 회원 관련 모든 로직
+  - `com.hipster.global`: 공통 설정, 예외 처리, 보안 등 전역적으로 사용되는 코드
 
-- **상속보다 합성(Composition over Inheritance)**: 클래스 간의 강한 결합을 피하고 유연성을 높이기 위해 상속보다는 합성을 우선적으로 사용합니다.
-- **인터페이스 기반 설계**: 핵심 로직은 인터페이스에 의존하도록 설계하여 구현체의 변경이 다른 부분에 미치는 영향을 최소화하고, 테스트 용이성을 확보합니다.
+### 3.2. 도메인 내부 계층 구조
+각 도메인 패키지(`com.hipster.album` 등) 하위에는 아래 5개 패키지를 필수로 구성합니다.
+
+1.  **`controller`**
+    - **역할**: 웹 요청(HTTP)의 End-point. 요청을 받아 서비스 계층에 위임하고, 처리된 결과를 DTO로 변환하여 응답합니다.
+    - **규칙**: 비즈니스 로직을 포함하지 않습니다.
+
+2.  **`service`**
+    - **역할**: 핵심 비즈니스 로직을 수행하고 트랜잭션을 관리합니다. (`@Transactional`)
+    - **규칙**: Controller와 Repository를 연결하며, DTO와 Entity 간의 변환을 책임집니다.
+
+3.  **`repository`**
+    - **역할**: 데이터베이스 접근 계층(Data Access Layer). Spring Data JPA 인터페이스가 위치합니다.
+    - **규칙**: DB CRUD 작업 및 QueryDSL을 이용한 동적 쿼리를 담당합니다.
+
+4.  **`dto`**
+    - **역할**: 계층 간 데이터 전송 객체(Data Transfer Object).
+    - **규칙**: Controller와 Service 사이, Service 내부 등에서 데이터 교환에 사용됩니다. `record` 타입 사용을 적극 권장합니다.
+
+5.  **`domain`**
+    - **역할**: 데이터베이스 테이블과 1:1로 매핑되는 핵심 도메인 모델(Entity)이 위치합니다.
+    - **규칙**: `Enum`, 값 객체(Value Object) 등 도메인과 관련된 객체들을 포함합니다.
+
+### 3.3. 예시 디렉토리 구조
+```text
+src/main/java/com/hipster
+├── global/              # 공통 설정 (Config, Exception, Security 등)
+├── user/                # [User Domain]
+│   ├── controller/      # UserController
+│   ├── service/         # UserService
+│   ├── repository/      # UserRepository
+│   ├── dto/             # UserRequest, UserResponse
+│   └── domain/          # User (Entity)
+└── album/               # [Album Domain]
+    ├── controller/      # AlbumController
+    ├── service/         # AlbumService
+    ├── repository/      # AlbumRepository
+    ├── dto/             # AlbumRequest, AlbumResponse
+    └── domain/          # Album (Entity), Release (Entity)
+```
