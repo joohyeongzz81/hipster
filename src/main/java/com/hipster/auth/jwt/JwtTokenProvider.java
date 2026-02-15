@@ -1,6 +1,7 @@
 package com.hipster.auth.jwt;
 
-import com.hipster.global.exception.BusinessException;
+import com.hipster.global.exception.ErrorCode;
+import com.hipster.global.exception.InvalidTokenException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -11,6 +12,8 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+
+import static com.hipster.global.exception.ErrorCode.INVALID_TOKEN;
 
 @Component
 public class JwtTokenProvider {
@@ -65,7 +68,7 @@ public class JwtTokenProvider {
         } catch (ExpiredJwtException e) {
             return e.getClaims();
         } catch (JwtException | IllegalArgumentException e) {
-            throw new InvalidTokenException("Invalid token claims.");
+            throw new InvalidTokenException(INVALID_TOKEN);
         }
     }
 

@@ -3,7 +3,8 @@ package com.hipster.auth.resolver;
 import com.hipster.auth.annotation.CurrentUser;
 import com.hipster.auth.dto.CurrentUserInfo;
 import com.hipster.auth.jwt.JwtTokenProvider;
-import com.hipster.auth.jwt.InvalidTokenException;
+import com.hipster.global.exception.ErrorCode;
+import com.hipster.global.exception.InvalidTokenException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.MethodParameter;
@@ -35,20 +36,20 @@ public class CurrentUserArgumentResolver implements HandlerMethodArgumentResolve
         String authorizationHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
 
         if (!StringUtils.hasText(authorizationHeader) || !authorizationHeader.startsWith(BEARER_PREFIX)) {
-            throw new InvalidTokenException("Authorization header is missing or does not start with Bearer.");
+            throw new InvalidTokenException(ErrorCode.AUTHORIZATION_HEADER_MISSING);
         }
 
         String token = authorizationHeader.substring(BEARER_PREFIX.length());
 
         if (!jwtTokenProvider.validateToken(token)) {
-            throw new InvalidTokenException("Token is not valid.");
+            throw new InvalidTokenException(ErrorCode.INVALID_TOKEN);
         }
 
         Long userId = jwtTokenProvider.extractUserId(token);
         String role = jwtTokenProvider.extractRole(token);
 
         if (userId == null || role == null) {
-            throw new InvalidTokenException("Token claims are invalid.");
+            throw new InvalidTokenException(ErrorCode.INVALID_TOKEN_CLAIMS);
         }
 
         return new CurrentUserInfo(userId, role);
