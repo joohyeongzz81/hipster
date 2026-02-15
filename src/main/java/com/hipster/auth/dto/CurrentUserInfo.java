@@ -1,7 +1,9 @@
 package com.hipster.auth.dto;
 
+import com.hipster.auth.UserRole;
+
 public record CurrentUserInfo(
         Long userId,
-        String role
+        UserRole role
 ) {
 }

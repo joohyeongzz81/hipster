@@ -1,5 +1,6 @@
 package com.hipster.auth.jwt;
 
+import com.hipster.auth.UserRole;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.InvalidTokenException;
 import io.jsonwebtoken.Claims;
@@ -13,8 +14,6 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
-import static com.hipster.global.exception.ErrorCode.INVALID_TOKEN;
-
 @Component
 public class JwtTokenProvider {
 
@@ -26,13 +25,13 @@ public class JwtTokenProvider {
         this.key = Keys.hmacShaKeyFor(jwtProperties.getSecret().getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateAccessToken(Long userId, String role) {
+    public String generateAccessToken(Long userId, UserRole role) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtProperties.getAccessTokenExpiry());
 
         return Jwts.builder()
                 .subject(userId.toString())
-                .claim("role", role)
+                .claim("role", role.name())
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(key)
@@ -68,7 +67,7 @@ public class JwtTokenProvider {
         } catch (ExpiredJwtException e) {
             return e.getClaims();
         } catch (JwtException | IllegalArgumentException e) {
-            throw new InvalidTokenException(INVALID_TOKEN);
+            throw new InvalidTokenException(ErrorCode.INVALID_TOKEN);
         }
     }
 

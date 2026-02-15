@@ -1,5 +1,6 @@
 package com.hipster.auth.resolver;
 
+import com.hipster.auth.UserRole;
 import com.hipster.auth.annotation.CurrentUser;
 import com.hipster.auth.dto.CurrentUserInfo;
 import com.hipster.auth.jwt.JwtTokenProvider;
@@ -46,12 +47,17 @@ public class CurrentUserArgumentResolver implements HandlerMethodArgumentResolve
         }
 
         Long userId = jwtTokenProvider.extractUserId(token);
-        String role = jwtTokenProvider.extractRole(token);
+        String roleString = jwtTokenProvider.extractRole(token);
 
-        if (userId == null || role == null) {
+        if (userId == null || roleString == null) {
             throw new InvalidTokenException(ErrorCode.INVALID_TOKEN_CLAIMS);
         }
 
-        return new CurrentUserInfo(userId, role);
+        try {
+            UserRole role = UserRole.valueOf(roleString.toUpperCase());
+            return new CurrentUserInfo(userId, role);
+        } catch (IllegalArgumentException e) {
+            throw new InvalidTokenException(ErrorCode.INVALID_TOKEN_CLAIMS);
+        }
     }
 }
