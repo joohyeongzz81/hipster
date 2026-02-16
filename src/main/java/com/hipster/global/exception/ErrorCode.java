@@ -25,6 +25,7 @@ public enum ErrorCode {
     INVALID_PASSWORD(2005, HttpStatus.UNAUTHORIZED, "비밀번호가 일치하지 않습니다."),
     REFRESH_TOKEN_EXPIRED(2006, HttpStatus.UNAUTHORIZED, "리프레시 토큰이 만료되었습니다."),
     EXPIRED_TOKEN(2007, HttpStatus.UNAUTHORIZED, "토큰이 만료되었습니다."),
+    ACCESS_DENIED(2008, HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
 
     // 4xxx: User & Token Domain Custom Errors
     USER_NOT_FOUND(4000, HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
