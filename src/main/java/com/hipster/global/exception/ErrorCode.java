@@ -21,7 +21,16 @@ public enum ErrorCode {
     AUTHORIZATION_HEADER_MISSING(2001, HttpStatus.UNAUTHORIZED, "인증 헤더가 없거나 잘못된 형식입니다."),
     INVALID_TOKEN_CLAIMS(2002, HttpStatus.UNAUTHORIZED, "토큰의 클레임이 유효하지 않습니다."),
     INVALID_OR_MISSING_TOKEN(2003, HttpStatus.UNAUTHORIZED, "토큰이 없거나 유효하지 않습니다."),
-    INSUFFICIENT_PERMISSIONS(2004, HttpStatus.FORBIDDEN, "요청을 수행할 수 있는 권한이 없습니다.");
+    INSUFFICIENT_PERMISSIONS(2004, HttpStatus.FORBIDDEN, "요청을 수행할 수 있는 권한이 없습니다."),
+    INVALID_PASSWORD(2005, HttpStatus.UNAUTHORIZED, "비밀번호가 일치하지 않습니다."),
+    REFRESH_TOKEN_EXPIRED(2006, HttpStatus.UNAUTHORIZED, "리프레시 토큰이 만료되었습니다."),
+    EXPIRED_TOKEN(2007, HttpStatus.UNAUTHORIZED, "토큰이 만료되었습니다."),
+
+    // 4xxx: User & Token Domain Custom Errors
+    USER_NOT_FOUND(4000, HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
+    EMAIL_ALREADY_EXISTS(4001, HttpStatus.CONFLICT, "이미 사용중인 이메일입니다."),
+    USERNAME_ALREADY_EXISTS(4002, HttpStatus.CONFLICT, "이미 사용중인 사용자 이름입니다."),
+    REFRESH_TOKEN_NOT_FOUND(4003, HttpStatus.NOT_FOUND, "리프레시 토큰을 찾을 수 없습니다.");
 
 
     private final int code;

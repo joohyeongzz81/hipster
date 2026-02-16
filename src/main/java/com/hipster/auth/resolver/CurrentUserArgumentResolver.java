@@ -42,10 +42,6 @@ public class CurrentUserArgumentResolver implements HandlerMethodArgumentResolve
 
         String token = authorizationHeader.substring(BEARER_PREFIX.length());
 
-        if (!jwtTokenProvider.validateToken(token)) {
-            throw new InvalidTokenException(ErrorCode.INVALID_TOKEN);
-        }
-
         Long userId = jwtTokenProvider.extractUserId(token);
         String roleString = jwtTokenProvider.extractRole(token);
 

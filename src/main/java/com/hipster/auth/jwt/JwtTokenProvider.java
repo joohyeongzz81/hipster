@@ -50,12 +50,13 @@ public class JwtTokenProvider {
                 .compact();
     }
 
-    public boolean validateToken(String token) {
+    public void validateToken(String token) {
         try {
             Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
-            return true;
+        } catch (ExpiredJwtException e) {
+            throw new InvalidTokenException(ErrorCode.EXPIRED_TOKEN);
         } catch (JwtException | IllegalArgumentException e) {
-            return false;
+            throw new InvalidTokenException(ErrorCode.INVALID_TOKEN);
         }
     }
 
