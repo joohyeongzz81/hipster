@@ -66,4 +66,8 @@ public class Release {
         this.catalogNumber = catalogNumber;
         this.label = label;
     }
+
+    public void approve() {
+        this.pendingApproval = false;
+    }
 }
