@@ -5,7 +5,12 @@ import com.hipster.global.dto.PaginationDto;
 import com.hipster.release.domain.Release;
 import com.hipster.release.dto.ReleaseSearchRequest;
 import com.hipster.release.dto.ReleaseSummaryResponse;
+import com.hipster.release.dto.CreateReleaseRequest;
 import com.hipster.release.repository.ReleaseRepository;
+import com.hipster.moderation.service.ModerationQueueService;
+import com.hipster.moderation.dto.ModerationSubmitRequest;
+import com.hipster.moderation.dto.ModerationSubmitResponse;
+import com.hipster.moderation.domain.EntityType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -26,6 +31,30 @@ import java.util.List;
 public class ReleaseService {
 
     private final ReleaseRepository releaseRepository;
+    private final ModerationQueueService moderationQueueService;
+
+    @Transactional
+    public ModerationSubmitResponse createRelease(CreateReleaseRequest request, Long submitterId) {
+        Release release = Release.builder()
+                .title(request.title())
+                .artistId(request.artistId())
+                .genreId(request.genreId())
+                .releaseType(request.releaseType())
+                .releaseDate(request.releaseDate())
+                .catalogNumber(request.catalogNumber())
+                .label(request.label())
+                .build();
+
+        release = releaseRepository.save(release);
+
+        ModerationSubmitRequest modRequest = new ModerationSubmitRequest(
+                EntityType.RELEASE,
+                release.getId(),
+                request.metaComment()
+        );
+
+        return moderationQueueService.submit(modRequest, submitterId);
+    }
 
     public PagedResponse<ReleaseSummaryResponse> searchReleases(ReleaseSearchRequest request) {
         int page = request.page() != null ? request.page() : 1;
