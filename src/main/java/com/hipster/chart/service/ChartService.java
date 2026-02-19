@@ -27,6 +27,8 @@ import java.util.ArrayList;
 import com.hipster.chart.dto.ChartEntryResponse;
 import com.hipster.chart.dto.TopChartResponse;
 import com.hipster.chart.dto.ChartFilterRequest;
+import com.hipster.artist.repository.ArtistRepository;
+import com.hipster.artist.domain.Artist;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -40,6 +42,7 @@ public class ChartService {
     private final RatingRepository ratingRepository;
     private final UserRepository userRepository;
     private final ChartScoreRepository chartScoreRepository;
+    private final ArtistRepository artistRepository;
 
     private static final double BAYESIAN_M = 50.0;
     private static final double GLOBAL_AVG_C = 3.2;
@@ -178,11 +181,15 @@ public class ChartService {
                     .orElse(null);
 
             if (release != null) {
+                String artistName = artistRepository.findById(release.getArtistId())
+                        .map(Artist::getName)
+                        .orElse("Unknown Artist");
+
                 ChartEntryResponse entry = ChartEntryResponse.builder()
                         .rank(rank++)
                         .releaseId(score.getReleaseId())
                         .title(release.getTitle())
-                        .artistName("Unknown Artist") // TODO: Artist 테이블 JOIN
+                        .artistName(artistName)
                         .releaseYear(release.getReleaseDate().getYear())
                         .bayesianScore(score.getBayesianScore())
                         .weightedAvgRating(score.getWeightedAvgRating())
