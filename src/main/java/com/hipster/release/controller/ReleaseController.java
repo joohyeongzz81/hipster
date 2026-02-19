@@ -3,6 +3,7 @@ package com.hipster.release.controller;
 import com.hipster.global.dto.PagedResponse;
 import com.hipster.release.dto.ReleaseSearchRequest;
 import com.hipster.release.dto.ReleaseSummaryResponse;
+import com.hipster.release.dto.ReleaseDetailResponse;
 import com.hipster.release.dto.CreateReleaseRequest;
 import com.hipster.release.service.ReleaseService;
 import com.hipster.auth.annotation.CurrentUser;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PathVariable;
 
 @RestController
 @RequestMapping("/api/v1/releases")
@@ -37,5 +39,10 @@ public class ReleaseController {
     ) {
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(releaseService.createRelease(request, user.userId()));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ReleaseDetailResponse> getRelease(@PathVariable Long id) {
+        return ResponseEntity.ok(releaseService.getReleaseDetail(id));
     }
 }

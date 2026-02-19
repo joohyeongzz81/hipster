@@ -5,12 +5,19 @@ import com.hipster.global.dto.PaginationDto;
 import com.hipster.release.domain.Release;
 import com.hipster.release.dto.ReleaseSearchRequest;
 import com.hipster.release.dto.ReleaseSummaryResponse;
+import com.hipster.release.dto.ReleaseDetailResponse;
 import com.hipster.release.dto.CreateReleaseRequest;
 import com.hipster.release.repository.ReleaseRepository;
 import com.hipster.moderation.service.ModerationQueueService;
 import com.hipster.moderation.dto.ModerationSubmitRequest;
 import com.hipster.moderation.dto.ModerationSubmitResponse;
 import com.hipster.moderation.domain.EntityType;
+import com.hipster.artist.repository.ArtistRepository;
+import com.hipster.artist.domain.Artist;
+import com.hipster.track.service.TrackService;
+import com.hipster.track.dto.TrackResponse;
+import com.hipster.global.exception.NotFoundException;
+import com.hipster.global.exception.ErrorCode;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -32,6 +39,8 @@ public class ReleaseService {
 
     private final ReleaseRepository releaseRepository;
     private final ModerationQueueService moderationQueueService;
+    private final ArtistRepository artistRepository;
+    private final TrackService trackService;
 
     @Transactional
     public ModerationSubmitResponse createRelease(CreateReleaseRequest request, Long submitterId) {
@@ -54,6 +63,31 @@ public class ReleaseService {
         );
 
         return moderationQueueService.submit(modRequest, submitterId);
+    }
+
+    public ReleaseDetailResponse getReleaseDetail(Long releaseId) {
+        Release release = releaseRepository.findById(releaseId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.NOT_FOUND));
+
+        String artistName = artistRepository.findById(release.getArtistId())
+                .map(Artist::getName)
+                .orElse("Unknown Artist");
+
+        List<TrackResponse> tracks = trackService.getTracksByReleaseId(releaseId);
+
+        return new ReleaseDetailResponse(
+                release.getId(),
+                release.getTitle(),
+                release.getArtistId(),
+                artistName,
+                release.getReleaseType(),
+                release.getReleaseDate(),
+                release.getCatalogNumber(),
+                release.getLabel(),
+                0.0,
+                0,
+                tracks
+        );
     }
 
     public PagedResponse<ReleaseSummaryResponse> searchReleases(ReleaseSearchRequest request) {
