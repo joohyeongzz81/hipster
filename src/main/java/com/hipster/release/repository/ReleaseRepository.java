@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Repository
 public interface ReleaseRepository extends JpaRepository<Release, Long>, JpaSpecificationExecutor<Release> {
@@ -15,6 +16,8 @@ public interface ReleaseRepository extends JpaRepository<Release, Long>, JpaSpec
     Page<Release> findByTitleContainingIgnoreCase(String title, Pageable pageable);
 
     Page<Release> findByPendingApprovalFalse(Pageable pageable);
+
+    List<Release> findAllByPendingApprovalFalse();
 
     boolean existsByTitleAndArtistIdAndReleaseDate(String title, Long artistId, LocalDate releaseDate);
 }

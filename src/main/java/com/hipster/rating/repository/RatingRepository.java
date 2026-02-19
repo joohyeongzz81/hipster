@@ -21,4 +21,6 @@ public interface RatingRepository extends JpaRepository<Rating, Long> {
     Page<Rating> findByReleaseIdOrderByCreatedAtDesc(Long releaseId, Pageable pageable);
 
     List<Rating> findByUserId(Long userId);
+
+    List<Rating> findByReleaseId(Long releaseId);
 }
