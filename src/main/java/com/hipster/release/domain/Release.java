@@ -29,6 +29,9 @@ public class Release {
     @Column(nullable = false)
     private Long artistId;
 
+    @Column(name = "genre_id")
+    private Long genreId;
+
     @Column(nullable = false, length = 500)
     private String title;
 
@@ -58,8 +61,9 @@ public class Release {
     private LocalDateTime updatedAt;
 
     @Builder
-    public Release(Long artistId, String title, ReleaseType releaseType, LocalDate releaseDate, String catalogNumber, String label) {
+    public Release(Long artistId, Long genreId, String title, ReleaseType releaseType, LocalDate releaseDate, String catalogNumber, String label) {
         this.artistId = artistId;
+        this.genreId = genreId;
         this.title = title;
         this.releaseType = releaseType;
         this.releaseDate = releaseDate;

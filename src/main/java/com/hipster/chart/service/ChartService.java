@@ -26,6 +26,7 @@ import java.util.ArrayList;
 
 import com.hipster.chart.dto.ChartEntryResponse;
 import com.hipster.chart.dto.TopChartResponse;
+import com.hipster.chart.dto.ChartFilterRequest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -150,11 +151,24 @@ public class ChartService {
     }
 
     @Transactional(readOnly = true)
-    public TopChartResponse getTopChart(Integer limit) {
-        log.debug("Fetching top {} chart from DB", limit);
+    public TopChartResponse getTopChart(Integer limit, ChartFilterRequest filter) {
+        log.debug("Fetching top {} chart from DB with filter: {}", limit, filter);
 
         Pageable pageable = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "bayesianScore"));
-        List<ChartScore> chartScores = chartScoreRepository.findTopNByOrderByBayesianScoreDesc(pageable);
+        List<ChartScore> chartScores;
+
+        if (filter == null) {
+            // Default: exclude esoteric releases
+            chartScores = chartScoreRepository.findCharts(null, null, null, false, pageable);
+        } else {
+            chartScores = chartScoreRepository.findCharts(
+                    filter.genreId(),
+                    filter.year(),
+                    filter.releaseType(),
+                    Boolean.TRUE.equals(filter.includeEsoteric()),
+                    pageable
+            );
+        }
 
         List<ChartEntryResponse> entries = new ArrayList<>();
         long rank = 1;
@@ -184,8 +198,15 @@ public class ChartService {
                 .map(ChartScore::getLastUpdated)
                 .orElse(LocalDateTime.now());
 
+        String chartTitle = "Top " + limit + " Releases";
+        if (filter != null) {
+            if (filter.genreId() != null) chartTitle += " (Genre " + filter.genreId() + ")";
+            if (filter.year() != null) chartTitle += " (" + filter.year() + ")";
+            if (filter.releaseType() != null) chartTitle += " [" + filter.releaseType() + "]";
+        }
+
         return TopChartResponse.builder()
-                .chartType("Top " + limit + " Albums")
+                .chartType(chartTitle)
                 .lastUpdated(lastUpdated)
                 .entries(entries)
                 .build();
