@@ -22,6 +22,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.ArrayList;
+
+import com.hipster.chart.dto.ChartEntryResponse;
+import com.hipster.chart.dto.TopChartResponse;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 @Slf4j
 @Service
@@ -140,5 +147,47 @@ public class ChartService {
 
         log.info("Chart score update completed. Processed: {}, Duration: {} minutes",
                 processedCount, durationMinutes);
+    }
+
+    @Transactional(readOnly = true)
+    public TopChartResponse getTopChart(Integer limit) {
+        log.debug("Fetching top {} chart from DB", limit);
+
+        Pageable pageable = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "bayesianScore"));
+        List<ChartScore> chartScores = chartScoreRepository.findTopNByOrderByBayesianScoreDesc(pageable);
+
+        List<ChartEntryResponse> entries = new ArrayList<>();
+        long rank = 1;
+
+        for (ChartScore score : chartScores) {
+            Release release = releaseRepository.findById(score.getReleaseId())
+                    .orElse(null);
+
+            if (release != null) {
+                ChartEntryResponse entry = ChartEntryResponse.builder()
+                        .rank(rank++)
+                        .releaseId(score.getReleaseId())
+                        .title(release.getTitle())
+                        .artistName("Unknown Artist") // TODO: Artist 테이블 JOIN
+                        .releaseYear(release.getReleaseDate().getYear())
+                        .bayesianScore(score.getBayesianScore())
+                        .weightedAvgRating(score.getWeightedAvgRating())
+                        .totalRatings(score.getTotalRatings())
+                        .isEsoteric(score.getIsEsoteric())
+                        .build();
+
+                entries.add(entry);
+            }
+        }
+
+        LocalDateTime lastUpdated = chartScoreRepository.findFirstByOrderByLastUpdatedDesc()
+                .map(ChartScore::getLastUpdated)
+                .orElse(LocalDateTime.now());
+
+        return TopChartResponse.builder()
+                .chartType("Top " + limit + " Albums")
+                .lastUpdated(lastUpdated)
+                .entries(entries)
+                .build();
     }
 }

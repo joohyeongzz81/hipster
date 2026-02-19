@@ -16,4 +16,8 @@ public interface ChartScoreRepository extends JpaRepository<ChartScore, Long> {
     List<ChartScore> findTop100ByOrderByBayesianScoreDesc();
 
     List<ChartScore> findAllByOrderByBayesianScoreDesc(Pageable pageable);
+
+    List<ChartScore> findTopNByOrderByBayesianScoreDesc(Pageable pageable);
+
+    Optional<ChartScore> findFirstByOrderByLastUpdatedDesc();
 }
