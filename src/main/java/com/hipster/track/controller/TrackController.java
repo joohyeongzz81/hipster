@@ -1,7 +1,7 @@
 package com.hipster.track.controller;
 
-import com.hipster.global.dto.ApiResponse;
-import com.hipster.track.dto.TrackResponse;
+import com.hipster.global.dto.response.ApiResponse;
+import com.hipster.track.dto.response.TrackResponse;
 import com.hipster.track.service.TrackService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

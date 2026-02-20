@@ -1,6 +1,6 @@
 package com.hipster.moderation.service;
 
-import com.hipster.global.dto.PaginationDto;
+import com.hipster.global.dto.response.PaginationDto;
 import com.hipster.global.exception.ConflictException;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.ForbiddenException;
@@ -8,10 +8,10 @@ import com.hipster.global.exception.NotFoundException;
 import com.hipster.moderation.domain.ModerationQueue;
 import com.hipster.moderation.domain.ModerationStatus;
 import com.hipster.moderation.domain.RejectionReason;
-import com.hipster.moderation.dto.ModerationQueueItemResponse;
-import com.hipster.moderation.dto.ModerationQueueListResponse;
-import com.hipster.moderation.dto.ModerationSubmitRequest;
-import com.hipster.moderation.dto.ModerationSubmitResponse;
+import com.hipster.moderation.dto.response.ModerationQueueItemResponse;
+import com.hipster.moderation.dto.response.ModerationQueueListResponse;
+import com.hipster.moderation.dto.request.ModerationSubmitRequest;
+import com.hipster.moderation.dto.response.ModerationSubmitResponse;
 import com.hipster.moderation.repository.ModerationQueueRepository;
 import com.hipster.release.domain.Release;
 import com.hipster.release.repository.ReleaseRepository;

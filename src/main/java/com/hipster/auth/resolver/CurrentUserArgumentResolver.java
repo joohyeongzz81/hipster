@@ -2,7 +2,7 @@ package com.hipster.auth.resolver;
 
 import com.hipster.auth.UserRole;
 import com.hipster.auth.annotation.CurrentUser;
-import com.hipster.auth.dto.CurrentUserInfo;
+import com.hipster.auth.dto.response.CurrentUserInfo;
 import com.hipster.auth.jwt.JwtTokenProvider;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.InvalidTokenException;

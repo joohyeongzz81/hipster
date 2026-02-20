@@ -1,6 +1,6 @@
 package com.hipster.global.exception;
 
-import com.hipster.global.dto.ApiResponse;
+import com.hipster.global.dto.response.ApiResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;

@@ -1,11 +1,11 @@
 package com.hipster.rating.controller;
 
 import com.hipster.auth.annotation.CurrentUser;
-import com.hipster.auth.dto.CurrentUserInfo;
-import com.hipster.global.dto.ApiResponse;
-import com.hipster.rating.dto.CreateRatingRequest;
-import com.hipster.rating.dto.RatingResponse;
-import com.hipster.rating.dto.RatingResult;
+import com.hipster.auth.dto.response.CurrentUserInfo;
+import com.hipster.global.dto.response.ApiResponse;
+import com.hipster.rating.dto.request.CreateRatingRequest;
+import com.hipster.rating.dto.response.RatingResponse;
+import com.hipster.rating.dto.response.RatingResult;
 import com.hipster.rating.service.RatingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

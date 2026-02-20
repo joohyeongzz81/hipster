@@ -1,10 +1,10 @@
 package com.hipster.user.controller;
 
 import com.hipster.auth.annotation.CurrentUser;
-import com.hipster.auth.dto.CurrentUserInfo;
-import com.hipster.global.dto.ApiResponse;
-import com.hipster.user.dto.UserProfileResponse;
-import com.hipster.user.dto.WeightingResponse;
+import com.hipster.auth.dto.response.CurrentUserInfo;
+import com.hipster.global.dto.response.ApiResponse;
+import com.hipster.user.dto.response.UserProfileResponse;
+import com.hipster.user.dto.response.WeightingResponse;
 import com.hipster.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

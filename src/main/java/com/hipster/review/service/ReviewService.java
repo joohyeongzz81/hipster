@@ -1,15 +1,15 @@
 package com.hipster.review.service;
 
-import com.hipster.global.dto.PagedResponse;
-import com.hipster.global.dto.PaginationDto;
+import com.hipster.global.dto.response.PagedResponse;
+import com.hipster.global.dto.response.PaginationDto;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.ForbiddenException;
 import com.hipster.global.exception.NotFoundException;
 import com.hipster.review.domain.Review;
 import com.hipster.review.domain.ReviewStatus;
-import com.hipster.review.dto.CreateReviewRequest;
-import com.hipster.review.dto.ReviewResponse;
-import com.hipster.review.dto.UpdateReviewRequest;
+import com.hipster.review.dto.request.CreateReviewRequest;
+import com.hipster.review.dto.response.ReviewResponse;
+import com.hipster.review.dto.request.UpdateReviewRequest;
 import com.hipster.review.repository.ReviewRepository;
 import com.hipster.release.repository.ReleaseRepository;
 import com.hipster.user.domain.User;

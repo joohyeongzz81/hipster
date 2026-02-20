@@ -1,11 +1,11 @@
 package com.hipster.auth.controller;
 
-import com.hipster.auth.dto.LoginRequest;
-import com.hipster.auth.dto.RefreshTokenRequest;
-import com.hipster.auth.dto.RegisterRequest;
-import com.hipster.auth.dto.TokenResponse;
+import com.hipster.auth.dto.request.LoginRequest;
+import com.hipster.auth.dto.request.RefreshTokenRequest;
+import com.hipster.auth.dto.request.RegisterRequest;
+import com.hipster.auth.dto.response.TokenResponse;
 import com.hipster.auth.service.AuthService;
-import com.hipster.global.dto.ApiResponse;
+import com.hipster.global.dto.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

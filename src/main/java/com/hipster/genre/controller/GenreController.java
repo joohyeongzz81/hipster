@@ -1,12 +1,12 @@
 package com.hipster.genre.controller;
 
 import com.hipster.auth.annotation.CurrentUser;
-import com.hipster.auth.dto.CurrentUserInfo;
-import com.hipster.genre.dto.CreateGenreRequest;
-import com.hipster.genre.dto.GenreNodeResponse;
+import com.hipster.auth.dto.response.CurrentUserInfo;
+import com.hipster.genre.dto.request.CreateGenreRequest;
+import com.hipster.genre.dto.response.GenreNodeResponse;
 import com.hipster.genre.service.GenreService;
-import com.hipster.global.dto.ApiResponse;
-import com.hipster.moderation.dto.ModerationSubmitResponse;
+import com.hipster.global.dto.response.ApiResponse;
+import com.hipster.moderation.dto.response.ModerationSubmitResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

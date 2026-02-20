@@ -1,9 +1,9 @@
 package com.hipster.chart.controller;
 
-import com.hipster.chart.dto.ChartFilterRequest;
-import com.hipster.chart.dto.TopChartResponse;
+import com.hipster.chart.dto.request.ChartFilterRequest;
+import com.hipster.chart.dto.response.TopChartResponse;
 import com.hipster.chart.service.ChartService;
-import com.hipster.global.dto.ApiResponse;
+import com.hipster.global.dto.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;

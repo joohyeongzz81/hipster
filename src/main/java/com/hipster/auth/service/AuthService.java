@@ -1,9 +1,9 @@
 package com.hipster.auth.service;
 
 import com.hipster.auth.domain.RefreshToken;
-import com.hipster.auth.dto.LoginRequest;
-import com.hipster.auth.dto.RegisterRequest;
-import com.hipster.auth.dto.TokenResponse;
+import com.hipster.auth.dto.request.LoginRequest;
+import com.hipster.auth.dto.request.RegisterRequest;
+import com.hipster.auth.dto.response.TokenResponse;
 import com.hipster.auth.jwt.JwtProperties;
 import com.hipster.auth.jwt.JwtTokenProvider;
 import com.hipster.auth.repository.RefreshTokenRepository;

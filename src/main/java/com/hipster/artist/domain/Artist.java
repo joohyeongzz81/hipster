@@ -1,6 +1,6 @@
 package com.hipster.artist.domain;
 
-import com.hipster.artist.dto.CreateArtistRequest;
+import com.hipster.artist.dto.request.CreateArtistRequest;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;

@@ -1,13 +1,13 @@
 package com.hipster.artist.controller;
 
-import com.hipster.artist.dto.ArtistResponse;
-import com.hipster.artist.dto.CreateArtistRequest;
+import com.hipster.artist.dto.response.ArtistResponse;
+import com.hipster.artist.dto.request.CreateArtistRequest;
 import com.hipster.artist.service.ArtistService;
 import com.hipster.auth.annotation.CurrentUser;
-import com.hipster.auth.dto.CurrentUserInfo;
-import com.hipster.global.dto.ApiResponse;
-import com.hipster.global.dto.PagedResponse;
-import com.hipster.moderation.dto.ModerationSubmitResponse;
+import com.hipster.auth.dto.response.CurrentUserInfo;
+import com.hipster.global.dto.response.ApiResponse;
+import com.hipster.global.dto.response.PagedResponse;
+import com.hipster.moderation.dto.response.ModerationSubmitResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

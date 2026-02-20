@@ -3,7 +3,7 @@ package com.hipster.moderation.service;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.NotFoundException;
 import com.hipster.moderation.domain.ModerationQueue;
-import com.hipster.moderation.dto.SubmitRequest;
+import com.hipster.moderation.dto.request.SubmitRequest;
 import com.hipster.moderation.repository.ModerationQueueRepository;
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;

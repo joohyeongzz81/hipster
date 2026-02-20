@@ -1,12 +1,12 @@
 package com.hipster.genre.service;
 
 import com.hipster.genre.domain.Genre;
-import com.hipster.genre.dto.CreateGenreRequest;
-import com.hipster.genre.dto.GenreNodeResponse;
+import com.hipster.genre.dto.request.CreateGenreRequest;
+import com.hipster.genre.dto.response.GenreNodeResponse;
 import com.hipster.genre.repository.GenreRepository;
 import com.hipster.moderation.domain.EntityType;
-import com.hipster.moderation.dto.ModerationSubmitRequest;
-import com.hipster.moderation.dto.ModerationSubmitResponse;
+import com.hipster.moderation.dto.request.ModerationSubmitRequest;
+import com.hipster.moderation.dto.response.ModerationSubmitResponse;
 import com.hipster.moderation.service.ModerationQueueService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

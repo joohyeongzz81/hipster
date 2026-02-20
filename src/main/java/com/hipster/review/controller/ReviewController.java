@@ -1,12 +1,12 @@
 package com.hipster.review.controller;
 
 import com.hipster.auth.annotation.CurrentUser;
-import com.hipster.auth.dto.CurrentUserInfo;
-import com.hipster.global.dto.ApiResponse;
-import com.hipster.global.dto.PagedResponse;
-import com.hipster.review.dto.CreateReviewRequest;
-import com.hipster.review.dto.ReviewResponse;
-import com.hipster.review.dto.UpdateReviewRequest;
+import com.hipster.auth.dto.response.CurrentUserInfo;
+import com.hipster.global.dto.response.ApiResponse;
+import com.hipster.global.dto.response.PagedResponse;
+import com.hipster.review.dto.request.CreateReviewRequest;
+import com.hipster.review.dto.response.ReviewResponse;
+import com.hipster.review.dto.request.UpdateReviewRequest;
 import com.hipster.review.service.ReviewService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

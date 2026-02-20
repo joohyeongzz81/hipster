@@ -1,14 +1,14 @@
 package com.hipster.release.controller;
 
 import com.hipster.auth.annotation.CurrentUser;
-import com.hipster.auth.dto.CurrentUserInfo;
-import com.hipster.global.dto.ApiResponse;
-import com.hipster.global.dto.PagedResponse;
-import com.hipster.moderation.dto.ModerationSubmitResponse;
-import com.hipster.release.dto.CreateReleaseRequest;
-import com.hipster.release.dto.ReleaseDetailResponse;
-import com.hipster.release.dto.ReleaseSearchRequest;
-import com.hipster.release.dto.ReleaseSummaryResponse;
+import com.hipster.auth.dto.response.CurrentUserInfo;
+import com.hipster.global.dto.response.ApiResponse;
+import com.hipster.global.dto.response.PagedResponse;
+import com.hipster.moderation.dto.response.ModerationSubmitResponse;
+import com.hipster.release.dto.request.CreateReleaseRequest;
+import com.hipster.release.dto.response.ReleaseDetailResponse;
+import com.hipster.release.dto.request.ReleaseSearchRequest;
+import com.hipster.release.dto.response.ReleaseSummaryResponse;
 import com.hipster.release.service.ReleaseService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
