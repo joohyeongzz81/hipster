@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -12,8 +11,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Getter
-@Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(name = "chart_scores", indexes = {
         @Index(name = "idx_chart_release", columnList = "releaseId", unique = true),
         @Index(name = "idx_chart_bayesian", columnList = "bayesianScore DESC")
@@ -52,4 +50,19 @@ public class ChartScore {
     @UpdateTimestamp
     @Column(nullable = false)
     private LocalDateTime updatedAt;
+
+    public ChartScore(final Long releaseId) {
+        this.releaseId = releaseId;
+    }
+
+    public void updateScore(final Double bayesianScore, final Double weightedAvgRating,
+                            final Double effectiveVotes, final Long totalRatings,
+                            final Boolean isEsoteric) {
+        this.bayesianScore = bayesianScore;
+        this.weightedAvgRating = weightedAvgRating;
+        this.effectiveVotes = effectiveVotes;
+        this.totalRatings = totalRatings;
+        this.isEsoteric = isEsoteric;
+        this.lastUpdated = LocalDateTime.now();
+    }
 }

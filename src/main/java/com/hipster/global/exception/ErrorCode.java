@@ -36,7 +36,10 @@ public enum ErrorCode {
     USERNAME_ALREADY_EXISTS(4002, HttpStatus.CONFLICT, "이미 사용중인 사용자 이름입니다."),
     REFRESH_TOKEN_NOT_FOUND(4003, HttpStatus.NOT_FOUND, "리프레시 토큰을 찾을 수 없습니다."),
     RELEASE_NOT_FOUND(4004, HttpStatus.NOT_FOUND, "앨범을 찾을 수 없습니다."),
-    ALREADY_UNDER_REVIEW(4009, HttpStatus.CONFLICT, "이미 다른 모더레이터가 검토 중입니다.");
+    ALREADY_UNDER_REVIEW(4009, HttpStatus.CONFLICT, "이미 다른 모더레이터가 검토 중입니다."),
+
+    // 5xxx: Chart Domain Custom Errors
+    INVALID_CHART_LIMIT(5000, HttpStatus.BAD_REQUEST, "차트 조회 개수는 10 이상 1000 이하여야 합니다.");
 
     private final int code;
     private final HttpStatus status;
