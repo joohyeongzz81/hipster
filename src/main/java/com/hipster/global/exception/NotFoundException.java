@@ -2,7 +2,7 @@ package com.hipster.global.exception;
 
 public class NotFoundException extends BusinessException {
 
-    public NotFoundException(ErrorCode errorCode) {
+    public NotFoundException(final ErrorCode errorCode) {
         super(errorCode);
     }
 }
