@@ -1,24 +1,25 @@
 package com.hipster.release.controller;
 
-import com.hipster.global.dto.PagedResponse;
-import com.hipster.release.dto.ReleaseSearchRequest;
-import com.hipster.release.dto.ReleaseSummaryResponse;
-import com.hipster.release.dto.ReleaseDetailResponse;
-import com.hipster.release.dto.CreateReleaseRequest;
-import com.hipster.release.service.ReleaseService;
 import com.hipster.auth.annotation.CurrentUser;
 import com.hipster.auth.dto.CurrentUserInfo;
+import com.hipster.global.dto.ApiResponse;
+import com.hipster.global.dto.PagedResponse;
 import com.hipster.moderation.dto.ModerationSubmitResponse;
+import com.hipster.release.dto.CreateReleaseRequest;
+import com.hipster.release.dto.ReleaseDetailResponse;
+import com.hipster.release.dto.ReleaseSearchRequest;
+import com.hipster.release.dto.ReleaseSummaryResponse;
+import com.hipster.release.service.ReleaseService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.PathVariable;
 
 @RestController
 @RequestMapping("/api/v1/releases")
@@ -28,21 +29,22 @@ public class ReleaseController {
     private final ReleaseService releaseService;
 
     @GetMapping
-    public ResponseEntity<PagedResponse<ReleaseSummaryResponse>> searchReleases(ReleaseSearchRequest request) {
-        return ResponseEntity.ok(releaseService.searchReleases(request));
+    public ResponseEntity<ApiResponse<PagedResponse<ReleaseSummaryResponse>>> searchReleases(
+            final ReleaseSearchRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(releaseService.searchReleases(request)));
     }
 
     @PostMapping
-    public ResponseEntity<ModerationSubmitResponse> createRelease(
-            @RequestBody @Valid CreateReleaseRequest request,
-            @CurrentUser CurrentUserInfo user
-    ) {
+    public ResponseEntity<ApiResponse<ModerationSubmitResponse>> createRelease(
+            @RequestBody @Valid final CreateReleaseRequest request,
+            @CurrentUser final CurrentUserInfo user) {
+        final ModerationSubmitResponse response = releaseService.createRelease(request, user.userId());
         return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(releaseService.createRelease(request, user.userId()));
+                .body(ApiResponse.of(HttpStatus.ACCEPTED.value(), "앨범 등록 요청이 접수되었습니다.", response));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ReleaseDetailResponse> getRelease(@PathVariable Long id) {
-        return ResponseEntity.ok(releaseService.getReleaseDetail(id));
+    public ResponseEntity<ApiResponse<ReleaseDetailResponse>> getRelease(@PathVariable final Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(releaseService.getReleaseDetail(id)));
     }
 }

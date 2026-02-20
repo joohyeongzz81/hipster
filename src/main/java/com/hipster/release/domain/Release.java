@@ -61,7 +61,8 @@ public class Release {
     private LocalDateTime updatedAt;
 
     @Builder
-    public Release(Long artistId, Long genreId, String title, ReleaseType releaseType, LocalDate releaseDate, String catalogNumber, String label) {
+    public Release(final Long artistId, final Long genreId, final String title, final ReleaseType releaseType,
+                   final LocalDate releaseDate, final String catalogNumber, final String label) {
         this.artistId = artistId;
         this.genreId = genreId;
         this.title = title;

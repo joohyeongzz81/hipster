@@ -1,23 +1,23 @@
 package com.hipster.release.service;
 
+import com.hipster.artist.domain.Artist;
+import com.hipster.artist.repository.ArtistRepository;
 import com.hipster.global.dto.PagedResponse;
 import com.hipster.global.dto.PaginationDto;
-import com.hipster.release.domain.Release;
-import com.hipster.release.dto.ReleaseSearchRequest;
-import com.hipster.release.dto.ReleaseSummaryResponse;
-import com.hipster.release.dto.ReleaseDetailResponse;
-import com.hipster.release.dto.CreateReleaseRequest;
-import com.hipster.release.repository.ReleaseRepository;
-import com.hipster.moderation.service.ModerationQueueService;
+import com.hipster.global.exception.ErrorCode;
+import com.hipster.global.exception.NotFoundException;
+import com.hipster.moderation.domain.EntityType;
 import com.hipster.moderation.dto.ModerationSubmitRequest;
 import com.hipster.moderation.dto.ModerationSubmitResponse;
-import com.hipster.moderation.domain.EntityType;
-import com.hipster.artist.repository.ArtistRepository;
-import com.hipster.artist.domain.Artist;
-import com.hipster.track.service.TrackService;
+import com.hipster.moderation.service.ModerationQueueService;
+import com.hipster.release.domain.Release;
+import com.hipster.release.dto.CreateReleaseRequest;
+import com.hipster.release.dto.ReleaseDetailResponse;
+import com.hipster.release.dto.ReleaseSearchRequest;
+import com.hipster.release.dto.ReleaseSummaryResponse;
+import com.hipster.release.repository.ReleaseRepository;
 import com.hipster.track.dto.TrackResponse;
-import com.hipster.global.exception.NotFoundException;
-import com.hipster.global.exception.ErrorCode;
+import com.hipster.track.service.TrackService;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -43,8 +43,8 @@ public class ReleaseService {
     private final TrackService trackService;
 
     @Transactional
-    public ModerationSubmitResponse createRelease(CreateReleaseRequest request, Long submitterId) {
-        Release release = Release.builder()
+    public ModerationSubmitResponse createRelease(final CreateReleaseRequest request, final Long submitterId) {
+        final Release release = releaseRepository.save(Release.builder()
                 .title(request.title())
                 .artistId(request.artistId())
                 .genreId(request.genreId())
@@ -52,11 +52,9 @@ public class ReleaseService {
                 .releaseDate(request.releaseDate())
                 .catalogNumber(request.catalogNumber())
                 .label(request.label())
-                .build();
+                .build());
 
-        release = releaseRepository.save(release);
-
-        ModerationSubmitRequest modRequest = new ModerationSubmitRequest(
+        final ModerationSubmitRequest modRequest = new ModerationSubmitRequest(
                 EntityType.RELEASE,
                 release.getId(),
                 request.metaComment()
@@ -65,15 +63,15 @@ public class ReleaseService {
         return moderationQueueService.submit(modRequest, submitterId);
     }
 
-    public ReleaseDetailResponse getReleaseDetail(Long releaseId) {
-        Release release = releaseRepository.findById(releaseId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.NOT_FOUND));
+    public ReleaseDetailResponse getReleaseDetail(final Long releaseId) {
+        final Release release = releaseRepository.findById(releaseId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.RELEASE_NOT_FOUND));
 
-        String artistName = artistRepository.findById(release.getArtistId())
+        final String artistName = artistRepository.findById(release.getArtistId())
                 .map(Artist::getName)
                 .orElse("Unknown Artist");
 
-        List<TrackResponse> tracks = trackService.getTracksByReleaseId(releaseId);
+        final List<TrackResponse> tracks = trackService.getTracksByReleaseId(releaseId);
 
         return new ReleaseDetailResponse(
                 release.getId(),
@@ -90,50 +88,53 @@ public class ReleaseService {
         );
     }
 
-    public PagedResponse<ReleaseSummaryResponse> searchReleases(ReleaseSearchRequest request) {
-        int page = request.page() != null ? request.page() : 1;
-        int limit = request.limit() != null ? request.limit() : 20;
+    public PagedResponse<ReleaseSummaryResponse> searchReleases(final ReleaseSearchRequest request) {
+        final int page = request.page() != null ? request.page() : 1;
+        final int limit = request.limit() != null ? request.limit() : 20;
 
-        Sort sort = Sort.by(Sort.Direction.DESC, "releaseDate");
-        if (request.sort() != null) {
-            String sortProp = "release_date".equals(request.sort()) ? "releaseDate" : request.sort();
-            Sort.Direction direction = "asc".equalsIgnoreCase(request.order()) ? Sort.Direction.ASC : Sort.Direction.DESC;
-            sort = Sort.by(direction, sortProp);
+        final Sort sort = buildSort(request);
+        final Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit, sort);
+        final Specification<Release> spec = buildSearchSpecification(request);
+
+        final Page<Release> pageResult = releaseRepository.findAll(spec, pageable);
+
+        final List<ReleaseSummaryResponse> content = pageResult.getContent().stream()
+                .map(ReleaseSummaryResponse::from)
+                .toList();
+
+        final PaginationDto pagination = new PaginationDto(page, limit, pageResult.getTotalElements(), pageResult.getTotalPages());
+
+        return new PagedResponse<>(content, pagination);
+    }
+
+    private Sort buildSort(final ReleaseSearchRequest request) {
+        if (request.sort() == null) {
+            return Sort.by(Sort.Direction.DESC, "releaseDate");
         }
+        final String sortProp = "release_date".equals(request.sort()) ? "releaseDate" : request.sort();
+        final Sort.Direction direction = "asc".equalsIgnoreCase(request.order()) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        return Sort.by(direction, sortProp);
+    }
 
-        Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit, sort);
-
-        Specification<Release> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
+    private Specification<Release> buildSearchSpecification(final ReleaseSearchRequest request) {
+        return (root, query, cb) -> {
+            final List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.isFalse(root.get("pendingApproval")));
 
             if (StringUtils.hasText(request.q())) {
                 predicates.add(cb.like(cb.lower(root.get("title")), "%" + request.q().toLowerCase() + "%"));
             }
-
             if (request.releaseType() != null) {
                 predicates.add(cb.equal(root.get("releaseType"), request.releaseType()));
             }
-
             if (request.year() != null) {
                 predicates.add(cb.equal(cb.function("YEAR", Integer.class, root.get("releaseDate")), request.year()));
             }
-
             if (request.artistId() != null) {
                 predicates.add(cb.equal(root.get("artistId"), request.artistId()));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
-
-        Page<Release> pageResult = releaseRepository.findAll(spec, pageable);
-
-        List<ReleaseSummaryResponse> content = pageResult.getContent().stream()
-                .map(ReleaseSummaryResponse::from)
-                .toList();
-
-        PaginationDto pagination = new PaginationDto(page, limit, pageResult.getTotalElements(), pageResult.getTotalPages());
-
-        return new PagedResponse<>(content, pagination);
     }
 }

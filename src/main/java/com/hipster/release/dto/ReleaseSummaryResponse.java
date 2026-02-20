@@ -14,7 +14,7 @@ public record ReleaseSummaryResponse(
         Double averageRating,
         Integer totalRatings
 ) {
-    public static ReleaseSummaryResponse from(Release release) {
+    public static ReleaseSummaryResponse from(final Release release) {
         return new ReleaseSummaryResponse(
                 release.getId(),
                 release.getTitle(),
