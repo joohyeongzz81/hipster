@@ -1,11 +1,11 @@
 package com.hipster.artist.domain;
 
+import com.hipster.artist.dto.CreateArtistRequest;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(name = "artists", indexes = {
         @Index(name = "idx_artists_name", columnList = "name"),
-        @Index(name = "idx_artists_pending", columnList = "pendingApproval")
+        @Index(name = "idx_artists_status", columnList = "status")
 })
 public class Artist {
 
@@ -36,9 +36,9 @@ public class Artist {
     @Column(length = 100)
     private String country;
 
-    @Column(nullable = false)
-    @ColumnDefault("true")
-    private Boolean pendingApproval = true;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ArtistStatus status = ArtistStatus.PENDING;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
@@ -49,14 +49,27 @@ public class Artist {
     private LocalDateTime updatedAt;
 
     @Builder
-    public Artist(String name, String description, Integer formedYear, String country) {
+    private Artist(final String name, final String description, final Integer formedYear, final String country) {
         this.name = name;
         this.description = description;
         this.formedYear = formedYear;
         this.country = country;
     }
 
+    public static Artist from(final CreateArtistRequest request) {
+        return Artist.builder()
+                .name(request.name())
+                .description(request.description())
+                .formedYear(request.formedYear())
+                .country(request.country())
+                .build();
+    }
+
     public void approve() {
-        this.pendingApproval = false;
+        this.status = ArtistStatus.ACTIVE;
+    }
+
+    public void delete() {
+        this.status = ArtistStatus.DELETED;
     }
 }

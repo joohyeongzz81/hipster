@@ -1,6 +1,7 @@
 package com.hipster.artist.service;
 
 import com.hipster.artist.domain.Artist;
+import com.hipster.artist.domain.ArtistStatus;
 import com.hipster.artist.dto.ArtistResponse;
 import com.hipster.artist.dto.CreateArtistRequest;
 import com.hipster.artist.repository.ArtistRepository;
@@ -30,41 +31,42 @@ public class ArtistService {
     private final ModerationQueueService moderationQueueService;
 
     @Transactional
-    public ModerationSubmitResponse createArtist(CreateArtistRequest request, Long submitterId) {
-        Artist artist = Artist.builder()
-                .name(request.name())
-                .description(request.description())
-                .formedYear(request.formedYear())
-                .country(request.country())
-                .build();
+    public ModerationSubmitResponse createArtist(final CreateArtistRequest request, final Long submitterId) {
+        final Artist artist = artistRepository.save(Artist.from(request));
 
-        artist = artistRepository.save(artist);
-
-        ModerationSubmitRequest modRequest = new ModerationSubmitRequest(
+        final ModerationSubmitRequest modRequest = new ModerationSubmitRequest(
                 EntityType.ARTIST,
                 artist.getId(),
-                request.metaComment()
-        );
+                request.metaComment());
 
         return moderationQueueService.submit(modRequest, submitterId);
     }
 
-    public ArtistResponse getArtist(Long id) {
-        Artist artist = artistRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.NOT_FOUND));
+    public ArtistResponse getArtist(final Long id) {
+        final Artist artist = artistRepository.findByIdAndStatusNot(id, ArtistStatus.DELETED)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.ARTIST_NOT_FOUND));
         return ArtistResponse.from(artist);
     }
 
-    public PagedResponse<ArtistResponse> searchArtists(String query, int page, int limit) {
-        Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit);
-        Page<Artist> pageResult = artistRepository.findByNameContainingIgnoreCaseAndPendingApprovalFalse(query, pageable);
+    public PagedResponse<ArtistResponse> searchArtists(final String query, final int page, final int limit) {
+        final Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit);
+        final Page<Artist> pageResult = artistRepository.findByNameContainingIgnoreCaseAndStatus(query,
+                ArtistStatus.ACTIVE, pageable);
 
-        List<ArtistResponse> content = pageResult.getContent().stream()
+        final List<ArtistResponse> content = pageResult.getContent().stream()
                 .map(ArtistResponse::from)
                 .toList();
 
-        PaginationDto pagination = new PaginationDto(page, limit, pageResult.getTotalElements(), pageResult.getTotalPages());
+        final PaginationDto pagination = new PaginationDto(page, limit, pageResult.getTotalElements(),
+                pageResult.getTotalPages());
 
         return new PagedResponse<>(content, pagination);
+    }
+
+    @Transactional
+    public void deleteArtist(final Long id) {
+        final Artist artist = artistRepository.findByIdAndStatusNot(id, ArtistStatus.DELETED)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.ARTIST_NOT_FOUND));
+        artist.delete();
     }
 }

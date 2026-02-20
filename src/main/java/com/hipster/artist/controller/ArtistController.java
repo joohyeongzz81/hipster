@@ -5,6 +5,7 @@ import com.hipster.artist.dto.CreateArtistRequest;
 import com.hipster.artist.service.ArtistService;
 import com.hipster.auth.annotation.CurrentUser;
 import com.hipster.auth.dto.CurrentUserInfo;
+import com.hipster.global.dto.ApiResponse;
 import com.hipster.global.dto.PagedResponse;
 import com.hipster.moderation.dto.ModerationSubmitResponse;
 import jakarta.validation.Valid;
@@ -21,25 +22,30 @@ public class ArtistController {
     private final ArtistService artistService;
 
     @PostMapping
-    public ResponseEntity<ModerationSubmitResponse> createArtist(
-            @RequestBody @Valid CreateArtistRequest request,
-            @CurrentUser CurrentUserInfo user
-    ) {
+    public ResponseEntity<ApiResponse<ModerationSubmitResponse>> createArtist(
+            @RequestBody @Valid final CreateArtistRequest request,
+            @CurrentUser final CurrentUserInfo user) {
+        final ModerationSubmitResponse response = artistService.createArtist(request, user.userId());
         return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(artistService.createArtist(request, user.userId()));
+                .body(ApiResponse.of(HttpStatus.ACCEPTED.value(), "아티스트 등록 요청이 접수되었습니다.", response));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ArtistResponse> getArtist(@PathVariable Long id) {
-        return ResponseEntity.ok(artistService.getArtist(id));
+    public ResponseEntity<ApiResponse<ArtistResponse>> getArtist(@PathVariable final Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(artistService.getArtist(id)));
     }
 
     @GetMapping
-    public ResponseEntity<PagedResponse<ArtistResponse>> searchArtists(
-            @RequestParam(defaultValue = "") String q,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int limit
-    ) {
-        return ResponseEntity.ok(artistService.searchArtists(q, page, limit));
+    public ResponseEntity<ApiResponse<PagedResponse<ArtistResponse>>> searchArtists(
+            @RequestParam(defaultValue = "") final String q,
+            @RequestParam(defaultValue = "1") final int page,
+            @RequestParam(defaultValue = "20") final int limit) {
+        return ResponseEntity.ok(ApiResponse.ok(artistService.searchArtists(q, page, limit)));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteArtist(@PathVariable final Long id) {
+        artistService.deleteArtist(id);
+        return ResponseEntity.ok(ApiResponse.of(200, "아티스트가 삭제되었습니다.", null));
     }
 }
