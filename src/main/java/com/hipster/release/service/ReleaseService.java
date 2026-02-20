@@ -26,6 +26,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import com.hipster.rating.domain.Rating;
+import com.hipster.rating.repository.RatingRepository;
+import com.hipster.user.domain.User;
+import com.hipster.user.repository.UserRepository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -41,6 +45,8 @@ public class ReleaseService {
     private final ModerationQueueService moderationQueueService;
     private final ArtistRepository artistRepository;
     private final TrackService trackService;
+    private final RatingRepository ratingRepository;
+    private final UserRepository userRepository;
 
     @Transactional
     public ModerationSubmitResponse createRelease(final CreateReleaseRequest request, final Long submitterId) {
@@ -73,6 +79,21 @@ public class ReleaseService {
 
         final List<TrackResponse> tracks = trackService.getTracksByReleaseId(releaseId);
 
+        final List<Rating> ratings = ratingRepository.findByReleaseId(releaseId);
+        double totalWeightedScore = 0.0;
+        double totalWeighting = 0.0;
+
+        for (final Rating rating : ratings) {
+            final User user = userRepository.findById(rating.getUserId()).orElse(null);
+            if (user != null) {
+                totalWeightedScore += rating.getWeightedScore();
+                totalWeighting += user.getWeightingScore();
+            }
+        }
+
+        final double averageRating = totalWeighting > 0 ? Math.round((totalWeightedScore / totalWeighting) * 100.0) / 100.0 : 0.0;
+        final int ratingCount = ratings.size();
+
         return new ReleaseDetailResponse(
                 release.getId(),
                 release.getTitle(),
@@ -82,8 +103,8 @@ public class ReleaseService {
                 release.getReleaseDate(),
                 release.getCatalogNumber(),
                 release.getLabel(),
-                0.0,
-                0,
+                averageRating,
+                ratingCount,
                 tracks
         );
     }
