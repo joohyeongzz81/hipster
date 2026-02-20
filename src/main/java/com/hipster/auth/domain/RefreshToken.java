@@ -30,13 +30,13 @@ public class RefreshToken {
     @Column(nullable = false)
     private Instant expiryDate;
 
-    public RefreshToken(User user, String token, Instant expiryDate) {
+    public RefreshToken(final User user, final String token, final Instant expiryDate) {
         this.user = user;
         this.token = token;
         this.expiryDate = expiryDate;
     }
 
-    public void updateToken(String newToken, Instant newExpiryDate) {
+    public void updateToken(final String newToken, final Instant newExpiryDate) {
         this.token = newToken;
         this.expiryDate = newExpiryDate;
     }

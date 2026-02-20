@@ -25,35 +25,39 @@ public class CurrentUserArgumentResolver implements HandlerMethodArgumentResolve
     private final JwtTokenProvider jwtTokenProvider;
 
     @Override
-    public boolean supportsParameter(MethodParameter parameter) {
+    public boolean supportsParameter(final MethodParameter parameter) {
         return parameter.getParameterAnnotation(CurrentUser.class) != null
                 && parameter.getParameterType().equals(CurrentUserInfo.class);
     }
 
     @Override
-    public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
-                                  NativeWebRequest webRequest, WebDataBinderFactory binderFactory) {
-        HttpServletRequest request = (HttpServletRequest) webRequest.getNativeRequest();
-        String authorizationHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+    public Object resolveArgument(final MethodParameter parameter, final ModelAndViewContainer mavContainer,
+                                  final NativeWebRequest webRequest, final WebDataBinderFactory binderFactory) {
+        final String token = extractToken(webRequest);
 
-        if (!StringUtils.hasText(authorizationHeader) || !authorizationHeader.startsWith(BEARER_PREFIX)) {
-            throw new InvalidTokenException(ErrorCode.AUTHORIZATION_HEADER_MISSING);
-        }
-
-        String token = authorizationHeader.substring(BEARER_PREFIX.length());
-
-        Long userId = jwtTokenProvider.extractUserId(token);
-        String roleString = jwtTokenProvider.extractRole(token);
+        final Long userId = jwtTokenProvider.extractUserId(token);
+        final String roleString = jwtTokenProvider.extractRole(token);
 
         if (userId == null || roleString == null) {
             throw new InvalidTokenException(ErrorCode.INVALID_TOKEN_CLAIMS);
         }
 
         try {
-            UserRole role = UserRole.valueOf(roleString.toUpperCase());
+            final UserRole role = UserRole.valueOf(roleString.toUpperCase());
             return new CurrentUserInfo(userId, role);
         } catch (IllegalArgumentException e) {
             throw new InvalidTokenException(ErrorCode.INVALID_TOKEN_CLAIMS);
         }
+    }
+
+    private String extractToken(final NativeWebRequest webRequest) {
+        final HttpServletRequest request = (HttpServletRequest) webRequest.getNativeRequest();
+        final String authorizationHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+
+        if (!StringUtils.hasText(authorizationHeader) || !authorizationHeader.startsWith(BEARER_PREFIX)) {
+            throw new InvalidTokenException(ErrorCode.AUTHORIZATION_HEADER_MISSING);
+        }
+
+        return authorizationHeader.substring(BEARER_PREFIX.length());
     }
 }

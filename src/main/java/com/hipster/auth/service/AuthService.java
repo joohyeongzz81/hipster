@@ -1,11 +1,9 @@
 package com.hipster.auth.service;
 
-import com.hipster.auth.UserRole;
 import com.hipster.auth.domain.RefreshToken;
 import com.hipster.auth.dto.LoginRequest;
 import com.hipster.auth.dto.RegisterRequest;
 import com.hipster.auth.dto.TokenResponse;
-import com.hipster.auth.dto.UserProfileDto;
 import com.hipster.auth.jwt.JwtProperties;
 import com.hipster.auth.jwt.JwtTokenProvider;
 import com.hipster.auth.repository.RefreshTokenRepository;
@@ -21,7 +19,6 @@ import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class AuthService {
 
     private final UserRepository userRepository;
@@ -30,89 +27,84 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
 
-    public TokenResponse register(RegisterRequest request) {
+    @Transactional
+    public TokenResponse register(final RegisterRequest request) {
         validateEmailDuplication(request.email());
         validateUsernameDuplication(request.username());
 
-        User newUser = User.builder()
+        final User newUser = User.builder()
                 .username(request.username())
                 .email(request.email())
                 .passwordHash(passwordEncoder.encode(request.password()))
                 .build();
 
-        User savedUser = userRepository.save(newUser);
+        final User savedUser = userRepository.save(newUser);
+        final String refreshTokenValue = manageRefreshToken(savedUser);
 
-        return createTokenResponse(savedUser, true);
+        return TokenResponse.of(savedUser, jwtTokenProvider, jwtProperties, refreshTokenValue);
     }
 
-    public TokenResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.email())
+    @Transactional
+    public TokenResponse login(final LoginRequest request) {
+        final User user = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
 
-        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
-            throw new UnauthorizedException(ErrorCode.INVALID_PASSWORD);
-        }
-
+        validatePassword(request.password(), user.getPasswordHash());
         user.updateLastActiveDate();
 
-        return createTokenResponse(user, true);
+        final String refreshTokenValue = manageRefreshToken(user);
+
+        return TokenResponse.of(user, jwtTokenProvider, jwtProperties, refreshTokenValue);
     }
 
-    public TokenResponse refreshToken(String refreshTokenValue) {
+    @Transactional
+    public TokenResponse refreshToken(final String refreshTokenValue) {
         jwtTokenProvider.validateToken(refreshTokenValue);
 
-        RefreshToken refreshToken = refreshTokenRepository.findByToken(refreshTokenValue)
+        final RefreshToken refreshToken = refreshTokenRepository.findByToken(refreshTokenValue)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.REFRESH_TOKEN_NOT_FOUND));
 
-        if (refreshToken.isExpired()) {
-            refreshTokenRepository.delete(refreshToken);
-            throw new InvalidTokenException(ErrorCode.REFRESH_TOKEN_EXPIRED);
-        }
+        validateRefreshTokenExpiry(refreshToken);
 
-        return createTokenResponse(refreshToken.getUser(), true);
+        final String newRefreshTokenValue = manageRefreshToken(refreshToken.getUser());
+
+        return TokenResponse.of(refreshToken.getUser(), jwtTokenProvider, jwtProperties, newRefreshTokenValue);
     }
-    
-    private void validateEmailDuplication(String email) {
+
+    private void validateEmailDuplication(final String email) {
         if (userRepository.existsByEmail(email)) {
             throw new ConflictException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
     }
 
-    private void validateUsernameDuplication(String username) {
+    private void validateUsernameDuplication(final String username) {
         if (userRepository.existsByUsername(username)) {
             throw new ConflictException(ErrorCode.USERNAME_ALREADY_EXISTS);
         }
     }
 
-    private TokenResponse createTokenResponse(User user, boolean issueRefreshToken) {
-        UserRole role = user.getModerationRole() != null ? user.getModerationRole() : UserRole.USER;
-        String accessToken = jwtTokenProvider.generateAccessToken(user.getId(), role);
-        String refreshToken = null;
-
-        if (issueRefreshToken) {
-            refreshToken = manageRefreshToken(user);
+    private void validatePassword(final String rawPassword, final String encodedPassword) {
+        if (!passwordEncoder.matches(rawPassword, encodedPassword)) {
+            throw new UnauthorizedException(ErrorCode.INVALID_PASSWORD);
         }
-
-        UserProfileDto userProfile = UserProfileDto.from(user);
-
-        return new TokenResponse(
-                accessToken,
-                refreshToken,
-                jwtProperties.getAccessTokenExpiry() / 1000,
-                userProfile
-        );
     }
 
-    private String manageRefreshToken(User user) {
-        String tokenValue = jwtTokenProvider.generateRefreshToken(user.getId());
-        Instant expiryDate = Instant.now().plusMillis(jwtProperties.getRefreshTokenExpiry());
+    private void validateRefreshTokenExpiry(final RefreshToken refreshToken) {
+        if (refreshToken.isExpired()) {
+            refreshTokenRepository.delete(refreshToken);
+            throw new InvalidTokenException(ErrorCode.REFRESH_TOKEN_EXPIRED);
+        }
+    }
+
+    private String manageRefreshToken(final User user) {
+        final String tokenValue = jwtTokenProvider.generateRefreshToken(user.getId());
+        final Instant expiryDate = Instant.now().plusMillis(jwtProperties.getRefreshTokenExpiry());
 
         refreshTokenRepository.findByUser(user)
                 .ifPresentOrElse(
-                        refreshToken -> refreshToken.updateToken(tokenValue, expiryDate),
+                        existing -> existing.updateToken(tokenValue, expiryDate),
                         () -> refreshTokenRepository.save(new RefreshToken(user, tokenValue, expiryDate))
                 );
         return tokenValue;
     }
 }
-

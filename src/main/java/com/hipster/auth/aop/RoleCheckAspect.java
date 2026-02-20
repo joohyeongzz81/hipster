@@ -8,13 +8,14 @@ import com.hipster.global.exception.ForbiddenException;
 import com.hipster.global.exception.InvalidTokenException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
-import org.springframework.http.HttpHeaders;
 
 import java.util.Arrays;
 import java.util.List;
@@ -28,28 +29,33 @@ public class RoleCheckAspect {
     private final JwtTokenProvider jwtTokenProvider;
 
     @Around("@annotation(requireRole)")
-    public Object checkRole(org.aspectj.lang.ProceedingJoinPoint pjp, RequireRole requireRole) throws Throwable {
-        HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
-        String authorizationHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
-
-        if (!StringUtils.hasText(authorizationHeader) || !authorizationHeader.startsWith(BEARER_PREFIX)) {
-            throw new InvalidTokenException(ErrorCode.INVALID_OR_MISSING_TOKEN);
-        }
-
-        String token = authorizationHeader.substring(BEARER_PREFIX.length());
-        String roleString = jwtTokenProvider.extractRole(token);
+    public Object checkRole(final ProceedingJoinPoint pjp, final RequireRole requireRole) throws Throwable {
+        final String token = extractToken();
+        final String roleString = jwtTokenProvider.extractRole(token);
 
         if (roleString == null) {
             throw new InvalidTokenException(ErrorCode.INVALID_OR_MISSING_TOKEN);
         }
 
-        UserRole currentUserRole = UserRole.valueOf(roleString.toUpperCase());
-        List<UserRole> requiredRoles = Arrays.asList(requireRole.value());
+        final UserRole currentUserRole = UserRole.valueOf(roleString.toUpperCase());
+        final List<UserRole> requiredRoles = Arrays.asList(requireRole.value());
 
         if (!requiredRoles.contains(currentUserRole)) {
             throw new ForbiddenException(ErrorCode.INSUFFICIENT_PERMISSIONS);
         }
 
         return pjp.proceed();
+    }
+
+    private String extractToken() {
+        final HttpServletRequest request =
+                ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
+        final String authorizationHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+
+        if (!StringUtils.hasText(authorizationHeader) || !authorizationHeader.startsWith(BEARER_PREFIX)) {
+            throw new InvalidTokenException(ErrorCode.INVALID_OR_MISSING_TOKEN);
+        }
+
+        return authorizationHeader.substring(BEARER_PREFIX.length());
     }
 }

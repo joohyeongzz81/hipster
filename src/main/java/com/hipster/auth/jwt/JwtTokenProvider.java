@@ -20,14 +20,14 @@ public class JwtTokenProvider {
     private final SecretKey key;
     private final JwtProperties jwtProperties;
 
-    public JwtTokenProvider(JwtProperties jwtProperties) {
+    public JwtTokenProvider(final JwtProperties jwtProperties) {
         this.jwtProperties = jwtProperties;
         this.key = Keys.hmacShaKeyFor(jwtProperties.getSecret().getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateAccessToken(Long userId, UserRole role) {
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + jwtProperties.getAccessTokenExpiry());
+    public String generateAccessToken(final Long userId, final UserRole role) {
+        final Date now = new Date();
+        final Date expiryDate = new Date(now.getTime() + jwtProperties.getAccessTokenExpiry());
 
         return Jwts.builder()
                 .subject(userId.toString())
@@ -38,9 +38,9 @@ public class JwtTokenProvider {
                 .compact();
     }
 
-    public String generateRefreshToken(Long userId) {
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + jwtProperties.getRefreshTokenExpiry());
+    public String generateRefreshToken(final Long userId) {
+        final Date now = new Date();
+        final Date expiryDate = new Date(now.getTime() + jwtProperties.getRefreshTokenExpiry());
 
         return Jwts.builder()
                 .subject(userId.toString())
@@ -50,7 +50,7 @@ public class JwtTokenProvider {
                 .compact();
     }
 
-    public void validateToken(String token) {
+    public void validateToken(final String token) {
         try {
             Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
         } catch (ExpiredJwtException e) {
@@ -60,7 +60,19 @@ public class JwtTokenProvider {
         }
     }
 
-    private Claims extractAllClaims(String token) {
+    public Long extractUserId(final String token) {
+        return Long.parseLong(extractAllClaims(token).getSubject());
+    }
+
+    public String extractRole(final String token) {
+        return extractAllClaims(token).get("role", String.class);
+    }
+
+    public Date getExpiration(final String token) {
+        return extractAllClaims(token).getExpiration();
+    }
+
+    private Claims extractAllClaims(final String token) {
         try {
             return Jwts.parser().verifyWith(key).build()
                     .parseSignedClaims(token)
@@ -70,17 +82,5 @@ public class JwtTokenProvider {
         } catch (JwtException | IllegalArgumentException e) {
             throw new InvalidTokenException(ErrorCode.INVALID_TOKEN);
         }
-    }
-
-    public Long extractUserId(String token) {
-        return Long.parseLong(extractAllClaims(token).getSubject());
-    }
-
-    public String extractRole(String token) {
-        return extractAllClaims(token).get("role", String.class);
-    }
-
-    public Date getExpiration(String token) {
-        return extractAllClaims(token).getExpiration();
     }
 }
