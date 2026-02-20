@@ -2,6 +2,7 @@ package com.hipster.rating.controller;
 
 import com.hipster.auth.annotation.CurrentUser;
 import com.hipster.auth.dto.CurrentUserInfo;
+import com.hipster.global.dto.ApiResponse;
 import com.hipster.rating.dto.CreateRatingRequest;
 import com.hipster.rating.dto.RatingResponse;
 import com.hipster.rating.dto.RatingResult;
@@ -24,17 +25,17 @@ public class RatingController {
     private final RatingService ratingService;
 
     @PostMapping("/{releaseId}/ratings")
-    public ResponseEntity<RatingResponse> createOrUpdateRating(
-            @PathVariable Long releaseId,
-            @RequestBody @Valid CreateRatingRequest request,
-            @CurrentUser CurrentUserInfo userInfo) {
+    public ResponseEntity<ApiResponse<RatingResponse>> createOrUpdateRating(
+            @PathVariable final Long releaseId,
+            @RequestBody @Valid final CreateRatingRequest request,
+            @CurrentUser final CurrentUserInfo userInfo) {
 
-        RatingResult result = ratingService.createOrUpdateRating(releaseId, request, userInfo.userId());
+        final RatingResult result = ratingService.createOrUpdateRating(releaseId, request, userInfo.userId());
 
         if (result.isCreated()) {
-            return ResponseEntity.status(HttpStatus.CREATED).body(result.response());
-        } else {
-            return ResponseEntity.ok(result.response());
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(ApiResponse.of(HttpStatus.CREATED.value(), "평점이 등록되었습니다.", result.response()));
         }
+        return ResponseEntity.ok(ApiResponse.ok(result.response()));
     }
 }

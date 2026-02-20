@@ -18,25 +18,25 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class RatingService {
 
     private final RatingRepository ratingRepository;
     private final UserRepository userRepository;
     private final ReleaseRepository releaseRepository;
 
-    public RatingResult createOrUpdateRating(Long releaseId, CreateRatingRequest request, Long userId) {
+    @Transactional
+    public RatingResult createOrUpdateRating(final Long releaseId, final CreateRatingRequest request, final Long userId) {
         if (!releaseRepository.existsById(releaseId)) {
             throw new NotFoundException(ErrorCode.RELEASE_NOT_FOUND);
         }
 
-        User user = userRepository.findById(userId)
+        final User user = userRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
 
-        Optional<Rating> existingRating = ratingRepository.findByUserIdAndReleaseId(userId, releaseId);
-        boolean isCreated = existingRating.isEmpty();
+        final Optional<Rating> existingRating = ratingRepository.findByUserIdAndReleaseId(userId, releaseId);
+        final boolean isCreated = existingRating.isEmpty();
 
-        Rating rating = existingRating.map(r -> {
+        final Rating rating = existingRating.map(r -> {
             r.updateScore(request.score(), user.getWeightingScore());
             return r;
         }).orElseGet(() -> Rating.builder()
@@ -50,7 +50,7 @@ public class RatingService {
 
         user.updateLastActiveDate();
 
-        RatingResponse response = RatingResponse.from(rating, user.getUsername());
+        final RatingResponse response = RatingResponse.from(rating, user.getUsername());
         return new RatingResult(response, isCreated);
     }
 }

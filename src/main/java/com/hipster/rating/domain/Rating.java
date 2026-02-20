@@ -1,5 +1,7 @@
 package com.hipster.rating.domain;
 
+import com.hipster.global.exception.BadRequestException;
+import com.hipster.global.exception.ErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -45,20 +47,21 @@ public class Rating {
     private LocalDateTime updatedAt;
 
     @Builder
-    public Rating(Long userId, Long releaseId, Double score, Double userWeightingScore) {
+    public Rating(final Long userId, final Long releaseId, final Double score, final Double userWeightingScore) {
         this.userId = userId;
         this.releaseId = releaseId;
         this.updateScore(score, userWeightingScore);
     }
 
-    public void updateScore(Double score, Double userWeightingScore) {
-        if (score < 0.5 || score > 5.0) {
-            throw new IllegalArgumentException("Score must be between 0.5 and 5.0");
-        }
-        if (score % 0.5 != 0) {
-            throw new IllegalArgumentException("Score must be in increments of 0.5");
-        }
+    public void updateScore(final Double score, final Double userWeightingScore) {
+        validateScore(score);
         this.score = score;
         this.weightedScore = score * userWeightingScore;
+    }
+
+    private void validateScore(final Double score) {
+        if (score < 0.5 || score > 5.0 || score % 0.5 != 0) {
+            throw new BadRequestException(ErrorCode.INVALID_RATING_SCORE);
+        }
     }
 }

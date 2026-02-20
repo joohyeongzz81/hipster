@@ -44,7 +44,10 @@ public enum ErrorCode {
     // 6xxx: Moderation Domain Custom Errors
     MODERATION_ITEM_NOT_FOUND(6000, HttpStatus.NOT_FOUND, "모더레이션 항목을 찾을 수 없습니다."),
     MODERATION_NOT_CLAIMED(6001, HttpStatus.FORBIDDEN, "먼저 해당 항목을 담당해야 합니다."),
-    MODERATION_CLAIMED_BY_OTHER(6002, HttpStatus.FORBIDDEN, "다른 모더레이터가 담당 중인 항목입니다.");
+    MODERATION_CLAIMED_BY_OTHER(6002, HttpStatus.FORBIDDEN, "다른 모더레이터가 담당 중인 항목입니다."),
+
+    // 7xxx: Rating Domain Custom Errors
+    INVALID_RATING_SCORE(7000, HttpStatus.BAD_REQUEST, "점수는 0.5~5.0 범위의 0.5 단위여야 합니다.");
 
     private final int code;
     private final HttpStatus status;

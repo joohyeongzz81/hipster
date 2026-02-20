@@ -12,7 +12,7 @@ public record RatingResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
-    public static RatingResponse from(Rating rating, String username) {
+    public static RatingResponse from(final Rating rating, final String username) {
         return new RatingResponse(
                 rating.getId(),
                 rating.getUserId(),
