@@ -47,7 +47,11 @@ public enum ErrorCode {
     MODERATION_CLAIMED_BY_OTHER(6002, HttpStatus.FORBIDDEN, "다른 모더레이터가 담당 중인 항목입니다."),
 
     // 7xxx: Rating Domain Custom Errors
-    INVALID_RATING_SCORE(7000, HttpStatus.BAD_REQUEST, "점수는 0.5~5.0 범위의 0.5 단위여야 합니다.");
+    INVALID_RATING_SCORE(7000, HttpStatus.BAD_REQUEST, "점수는 0.5~5.0 범위의 0.5 단위여야 합니다."),
+
+    // 8xxx: Review Domain Custom Errors
+    REVIEW_NOT_FOUND(8000, HttpStatus.NOT_FOUND, "리뷰를 찾을 수 없습니다."),
+    REVIEW_NOT_OWNER(8001, HttpStatus.FORBIDDEN, "리뷰 작성자만 수정/삭제할 수 있습니다.");
 
     private final int code;
     private final HttpStatus status;
