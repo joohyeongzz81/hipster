@@ -60,7 +60,7 @@ public class User {
     private LocalDateTime updatedAt;
 
     @Builder
-    public User(String username, String email, String passwordHash) {
+    public User(final String username, final String email, final String passwordHash) {
         this.username = username;
         this.email = email;
         this.passwordHash = passwordHash;
@@ -73,13 +73,13 @@ public class User {
         this.lastActiveDate = LocalDateTime.now();
     }
 
-    public void updateWeightingScore(Double score) {
+    public void updateWeightingScore(final Double score) {
         if (score >= 0.0 && score <= 1.25) {
             this.weightingScore = score;
         }
     }
 
-    public boolean hasRole(UserRole role) {
+    public boolean hasRole(final UserRole role) {
         return this.moderationRole != null && this.moderationRole == role;
     }
 
@@ -97,7 +97,7 @@ public class User {
     }
 
     @Override
-    public boolean equals(Object o) {
+    public boolean equals(final Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         User user = (User) o;

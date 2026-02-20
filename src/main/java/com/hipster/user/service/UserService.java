@@ -18,20 +18,22 @@ public class UserService {
 
     private final UserRepository userRepository;
 
-    public UserProfileResponse getUserProfile(Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
+    public UserProfileResponse getUserProfile(final Long userId) {
+        final User user = findUserOrThrow(userId);
         return UserProfileResponse.from(user);
     }
 
-    public WeightingResponse getUserWeighting(Long userId, Long requestUserId) {
+    public WeightingResponse getUserWeighting(final Long userId, final Long requestUserId) {
         if (!userId.equals(requestUserId)) {
             throw new ForbiddenException(ErrorCode.ACCESS_DENIED);
         }
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
-
+        final User user = findUserOrThrow(userId);
         return WeightingResponse.from(user);
+    }
+
+    private User findUserOrThrow(final Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
     }
 }

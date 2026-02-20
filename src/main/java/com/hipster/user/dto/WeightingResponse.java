@@ -9,7 +9,7 @@ public record WeightingResponse(
         Boolean reviewBonus,
         LocalDateTime lastCalculated
 ) {
-    public static WeightingResponse from(User user) {
+    public static WeightingResponse from(final User user) {
         return new WeightingResponse(
                 user.getId(),
                 user.getWeightingScore(),

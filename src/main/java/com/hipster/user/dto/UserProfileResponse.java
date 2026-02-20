@@ -11,7 +11,7 @@ public record UserProfileResponse(
         Integer totalReviews,
         LocalDateTime createdAt
 ) {
-    public static UserProfileResponse from(User user) {
+    public static UserProfileResponse from(final User user) {
         return new UserProfileResponse(
                 user.getId(),
                 user.getUsername(),

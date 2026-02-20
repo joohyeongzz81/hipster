@@ -2,6 +2,7 @@ package com.hipster.user.controller;
 
 import com.hipster.auth.annotation.CurrentUser;
 import com.hipster.auth.dto.CurrentUserInfo;
+import com.hipster.global.dto.ApiResponse;
 import com.hipster.user.dto.UserProfileResponse;
 import com.hipster.user.dto.WeightingResponse;
 import com.hipster.user.service.UserService;
@@ -20,14 +21,14 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping("/{id}")
-    public ResponseEntity<UserProfileResponse> getUserProfile(@PathVariable Long id) {
-        return ResponseEntity.ok(userService.getUserProfile(id));
+    public ResponseEntity<ApiResponse<UserProfileResponse>> getUserProfile(@PathVariable final Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(userService.getUserProfile(id)));
     }
 
     @GetMapping("/{id}/weighting")
-    public ResponseEntity<WeightingResponse> getUserWeighting(
-            @PathVariable Long id,
-            @CurrentUser CurrentUserInfo userInfo) {
-        return ResponseEntity.ok(userService.getUserWeighting(id, userInfo.userId()));
+    public ResponseEntity<ApiResponse<WeightingResponse>> getUserWeighting(
+            @PathVariable final Long id,
+            @CurrentUser final CurrentUserInfo userInfo) {
+        return ResponseEntity.ok(ApiResponse.ok(userService.getUserWeighting(id, userInfo.userId())));
     }
 }
