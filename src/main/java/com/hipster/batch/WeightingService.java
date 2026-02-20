@@ -19,6 +19,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -44,7 +45,7 @@ public class WeightingService {
         do {
             userPage = userRepository.findAll(pageRequest);
             userPage.getContent().forEach(user -> {
-                double newWeight = calculateUserWeighting(user.getId(), LocalDateTime.now());
+                final double newWeight = calculateUserWeighting(user.getId(), LocalDateTime.now());
                 user.updateWeightingScore(newWeight);
             });
             pageRequest = pageRequest.next();
@@ -53,82 +54,76 @@ public class WeightingService {
         log.info("Finished user weighting recalculation batch job.");
     }
 
-    private Double calculateUserWeighting(Long userId, LocalDateTime calculationDate) {
-        List<Rating> ratings = ratingRepository.findByUserId(userId);
+    private double calculateUserWeighting(final Long userId, final LocalDateTime calculationDate) {
+        final List<Rating> ratings = ratingRepository.findByUserId(userId);
         if (ratings.size() < 10) {
             return 0.0;
         }
 
-        List<Review> reviews = reviewRepository.findByUserId(userId);
-        LocalDateTime lastActiveDate = getLastActiveDate(ratings, reviews, userId);
+        final List<Review> reviews = reviewRepository.findByUserId(userId);
+        final LocalDateTime lastActiveDate = getLastActiveDate(ratings, reviews, userId);
 
-        double baseWeight = calculateBaseWeighting(ratings, lastActiveDate, calculationDate);
-        double reviewBonus = calculateReviewBonus(reviews);
+        final double baseWeight = calculateBaseWeighting(ratings, lastActiveDate, calculationDate);
+        final double reviewBonus = calculateReviewBonus(reviews);
 
-        double finalWeight = baseWeight * (1 + reviewBonus);
+        final double finalWeight = baseWeight * (1 + reviewBonus);
 
         return Math.max(0.0, Math.min(1.25, finalWeight));
     }
 
-    private LocalDateTime getLastActiveDate(List<Rating> ratings, List<Review> reviews, Long userId) {
-        Optional<LocalDateTime> maxRatingDate = ratings.stream()
+    private LocalDateTime getLastActiveDate(final List<Rating> ratings, final List<Review> reviews,
+                                            final Long userId) {
+        final Optional<LocalDateTime> maxRatingDate = ratings.stream()
                 .map(Rating::getCreatedAt)
                 .max(Comparator.naturalOrder());
 
-        Optional<LocalDateTime> maxReviewDate = reviews.stream()
+        final Optional<LocalDateTime> maxReviewDate = reviews.stream()
                 .map(Review::getCreatedAt)
                 .max(Comparator.naturalOrder());
 
-        if (maxRatingDate.isPresent() && maxReviewDate.isPresent()) {
-            return maxRatingDate.get().isAfter(maxReviewDate.get()) ? maxRatingDate.get() : maxReviewDate.get();
-        } else if (maxRatingDate.isPresent()) {
-            return maxRatingDate.get();
-        } else if (maxReviewDate.isPresent()) {
-            return maxReviewDate.get();
-        } else {
-            // Fallback to user's last active date if no ratings or reviews
-            return userRepository.findById(userId).map(User::getLastActiveDate).orElse(LocalDateTime.now());
-        }
+        return Stream.of(maxRatingDate, maxReviewDate)
+                .flatMap(Optional::stream)
+                .max(Comparator.naturalOrder())
+                .orElseGet(() -> userRepository.findById(userId)
+                        .map(User::getLastActiveDate)
+                        .orElse(LocalDateTime.now()));
     }
 
-    private double calculateBaseWeighting(
-            List<Rating> ratings,
-            LocalDateTime lastActiveDate,
-            LocalDateTime calculationDate
-    ) {
-        int n = ratings.size();
-        double wCount = 0.4 * Math.min(1.0, (double) n / N_TARGET);
+    private double calculateBaseWeighting(final List<Rating> ratings, final LocalDateTime lastActiveDate,
+                                          final LocalDateTime calculationDate) {
+        final int n = ratings.size();
+        final double wCount = 0.4 * Math.min(1.0, (double) n / N_TARGET);
 
-        double[] scores = ratings.stream()
+        final double[] scores = ratings.stream()
                 .mapToDouble(Rating::getScore)
                 .toArray();
-        double mean = Arrays.stream(scores).average().orElse(0.0);
-        double variance = Arrays.stream(scores)
+        final double mean = Arrays.stream(scores).average().orElse(0.0);
+        final double variance = Arrays.stream(scores)
                 .map(s -> Math.pow(s - mean, 2))
                 .average()
                 .orElse(0.0);
-        double sigma = Math.sqrt(variance);
-        double wDiversity = 0.4 * Math.min(1.0, sigma / SIGMA_TARGET);
+        final double sigma = Math.sqrt(variance);
+        final double wDiversity = 0.4 * Math.min(1.0, sigma / SIGMA_TARGET);
 
-        long daysInactive = ChronoUnit.DAYS.between(lastActiveDate, calculationDate);
-        double wActivity = 0.2 * Math.exp(-LAMBDA * daysInactive);
+        final long daysInactive = ChronoUnit.DAYS.between(lastActiveDate, calculationDate);
+        final double wActivity = 0.2 * Math.exp(-LAMBDA * daysInactive);
 
         return wCount + wDiversity + wActivity;
     }
 
-    private double calculateReviewBonus(List<Review> reviews) {
+    private double calculateReviewBonus(final List<Review> reviews) {
         if (reviews.isEmpty()) {
             return 0.0;
         }
 
-        int m = reviews.size();
-        double bCount = 0.15 * Math.min(1.0, (double) m / M_TARGET);
+        final int m = reviews.size();
+        final double bCount = 0.15 * Math.min(1.0, (double) m / M_TARGET);
 
-        double avgLength = reviews.stream()
-                .mapToInt(r -> r.getContent().split("\s+").length)
+        final double avgLength = reviews.stream()
+                .mapToInt(r -> r.getContent().split("\\s+").length)
                 .average()
                 .orElse(0.0);
-        double bQuality = 0.10 * Math.min(1.0, avgLength / L_TARGET);
+        final double bQuality = 0.10 * Math.min(1.0, avgLength / L_TARGET);
 
         return Math.min(0.25, bCount + bQuality);
     }
