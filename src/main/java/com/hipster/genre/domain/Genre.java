@@ -57,7 +57,8 @@ public class Genre {
     private LocalDateTime updatedAt;
 
     @Builder
-    public Genre(String name, Long parentId, Integer level, String path, Boolean isDescriptor, String description) {
+    public Genre(final String name, final Long parentId, final Integer level, final String path,
+                 final Boolean isDescriptor, final String description) {
         this.name = name;
         this.parentId = parentId;
         this.level = level;

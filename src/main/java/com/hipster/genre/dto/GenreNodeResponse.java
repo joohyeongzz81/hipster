@@ -13,7 +13,7 @@ public record GenreNodeResponse(
         Boolean isDescriptor,
         List<GenreNodeResponse> children
 ) {
-    public static GenreNodeResponse from(Genre genre) {
+    public static GenreNodeResponse from(final Genre genre) {
         return new GenreNodeResponse(
                 genre.getId(),
                 genre.getName(),

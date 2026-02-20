@@ -5,6 +5,7 @@ import com.hipster.auth.dto.CurrentUserInfo;
 import com.hipster.genre.dto.CreateGenreRequest;
 import com.hipster.genre.dto.GenreNodeResponse;
 import com.hipster.genre.service.GenreService;
+import com.hipster.global.dto.ApiResponse;
 import com.hipster.moderation.dto.ModerationSubmitResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,16 +23,16 @@ public class GenreController {
     private final GenreService genreService;
 
     @PostMapping
-    public ResponseEntity<ModerationSubmitResponse> createGenre(
-            @RequestBody @Valid CreateGenreRequest request,
-            @CurrentUser CurrentUserInfo user
-    ) {
+    public ResponseEntity<ApiResponse<ModerationSubmitResponse>> createGenre(
+            @RequestBody @Valid final CreateGenreRequest request,
+            @CurrentUser final CurrentUserInfo user) {
+        final ModerationSubmitResponse response = genreService.createGenre(request, user.userId());
         return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(genreService.createGenre(request, user.userId()));
+                .body(ApiResponse.of(HttpStatus.ACCEPTED.value(), "장르 등록 요청이 접수되었습니다.", response));
     }
 
     @GetMapping("/tree")
-    public ResponseEntity<List<GenreNodeResponse>> getGenreTree() {
-        return ResponseEntity.ok(genreService.getGenreTree());
+    public ResponseEntity<ApiResponse<List<GenreNodeResponse>>> getGenreTree() {
+        return ResponseEntity.ok(ApiResponse.ok(genreService.getGenreTree()));
     }
 }

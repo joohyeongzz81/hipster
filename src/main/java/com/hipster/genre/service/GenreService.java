@@ -26,20 +26,15 @@ public class GenreService {
     private final ModerationQueueService moderationQueueService;
 
     @Transactional
-    public ModerationSubmitResponse createGenre(CreateGenreRequest request, Long submitterId) {
-        // Parent validation logic could be added here
-
-        Genre genre = Genre.builder()
+    public ModerationSubmitResponse createGenre(final CreateGenreRequest request, final Long submitterId) {
+        final Genre genre = genreRepository.save(Genre.builder()
                 .name(request.name())
                 .parentId(request.parentId())
                 .description(request.description())
                 .isDescriptor(request.isDescriptor())
-                // level and path logic should be handled here or after approval
-                .build();
+                .build());
 
-        genre = genreRepository.save(genre);
-
-        ModerationSubmitRequest modRequest = new ModerationSubmitRequest(
+        final ModerationSubmitRequest modRequest = new ModerationSubmitRequest(
                 EntityType.GENRE,
                 genre.getId(),
                 request.metaComment()
@@ -49,28 +44,33 @@ public class GenreService {
     }
 
     public List<GenreNodeResponse> getGenreTree() {
-        List<Genre> allGenres = genreRepository.findAllByPendingApprovalFalse();
-        Map<Long, GenreNodeResponse> nodeMap = new HashMap<>();
-        List<GenreNodeResponse> roots = new ArrayList<>();
+        final List<Genre> allGenres = genreRepository.findAllByPendingApprovalFalse();
+        final Map<Long, GenreNodeResponse> nodeMap = buildNodeMap(allGenres);
+        return assembleTree(allGenres, nodeMap);
+    }
 
-        // 1. Create nodes
-        for (Genre genre : allGenres) {
+    private Map<Long, GenreNodeResponse> buildNodeMap(final List<Genre> genres) {
+        final Map<Long, GenreNodeResponse> nodeMap = new HashMap<>();
+        for (final Genre genre : genres) {
             nodeMap.put(genre.getId(), GenreNodeResponse.from(genre));
         }
+        return nodeMap;
+    }
 
-        // 2. Build tree
-        for (Genre genre : allGenres) {
-            GenreNodeResponse node = nodeMap.get(genre.getId());
+    private List<GenreNodeResponse> assembleTree(final List<Genre> genres,
+                                                  final Map<Long, GenreNodeResponse> nodeMap) {
+        final List<GenreNodeResponse> roots = new ArrayList<>();
+        for (final Genre genre : genres) {
+            final GenreNodeResponse node = nodeMap.get(genre.getId());
             if (genre.getParentId() == null) {
                 roots.add(node);
             } else {
-                GenreNodeResponse parent = nodeMap.get(genre.getParentId());
+                final GenreNodeResponse parent = nodeMap.get(genre.getParentId());
                 if (parent != null) {
                     parent.children().add(node);
                 }
             }
         }
-
         return roots;
     }
 }
