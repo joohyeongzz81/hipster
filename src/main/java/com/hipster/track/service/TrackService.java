@@ -16,7 +16,7 @@ public class TrackService {
 
     private final TrackRepository trackRepository;
 
-    public List<TrackResponse> getTracksByReleaseId(Long releaseId) {
+    public List<TrackResponse> getTracksByReleaseId(final Long releaseId) {
         return trackRepository.findByReleaseIdOrderByTrackNumberAsc(releaseId).stream()
                 .map(TrackResponse::from)
                 .toList();

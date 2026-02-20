@@ -8,7 +8,7 @@ public record TrackResponse(
         String title,
         Integer durationSeconds
 ) {
-    public static TrackResponse from(Track track) {
+    public static TrackResponse from(final Track track) {
         return new TrackResponse(
                 track.getId(),
                 track.getTrackNumber(),

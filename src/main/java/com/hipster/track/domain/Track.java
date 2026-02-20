@@ -32,7 +32,7 @@ public class Track {
     private Integer durationSeconds;
 
     @Builder
-    public Track(Long releaseId, Integer trackNumber, String title, Integer durationSeconds) {
+    public Track(final Long releaseId, final Integer trackNumber, final String title, final Integer durationSeconds) {
         this.releaseId = releaseId;
         this.trackNumber = trackNumber;
         this.title = title;
