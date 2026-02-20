@@ -38,7 +38,6 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class ModerationQueueService {
 
     private final ModerationQueueRepository moderationQueueRepository;
@@ -46,21 +45,13 @@ public class ModerationQueueService {
     private final UserRepository userRepository;
     private final ReleaseRepository releaseRepository;
 
-    public ModerationSubmitResponse submit(ModerationSubmitRequest request, Long submitterId) {
+    @Transactional
+    public ModerationSubmitResponse submit(final ModerationSubmitRequest request, final Long submitterId) {
         if (spamDetectionService.detectSpamPattern(submitterId, request.entityType(), request.entityId(), request.metaComment())) {
-            ModerationQueue spamItem = ModerationQueue.builder()
-                    .entityType(request.entityType())
-                    .entityId(request.entityId())
-                    .submitterId(submitterId)
-                    .metaComment(request.metaComment())
-                    .priority(2)
-                    .build();
-            spamItem.reject(RejectionReason.SPAM_ABUSE, "Automated spam detection.");
-            moderationQueueRepository.save(spamItem);
-            return new ModerationSubmitResponse(spamItem.getId(), ModerationStatus.REJECTED, "Submission rejected due to spam suspicion.", "N/A");
+            return handleSpamSubmission(request, submitterId);
         }
 
-        ModerationQueue queueItem = ModerationQueue.builder()
+        final ModerationQueue queueItem = ModerationQueue.builder()
                 .entityType(request.entityType())
                 .entityId(request.entityId())
                 .submitterId(submitterId)
@@ -68,7 +59,7 @@ public class ModerationQueueService {
                 .priority(2)
                 .build();
 
-        User user = userRepository.findById(submitterId)
+        final User user = userRepository.findById(submitterId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
 
         if (user.getWeightingScore() > 0.8) {
@@ -79,96 +70,118 @@ public class ModerationQueueService {
 
         moderationQueueRepository.save(queueItem);
 
-        String estimatedTime = "14 days";
-        if (queueItem.getStatus() == ModerationStatus.AUTO_APPROVED) {
-            estimatedTime = "Instant";
-        }
+        final String estimatedTime = (queueItem.getStatus() == ModerationStatus.AUTO_APPROVED) ? "Instant" : "14 days";
 
         return new ModerationSubmitResponse(queueItem.getId(), queueItem.getStatus(), "Submission received.", estimatedTime);
     }
 
     @Transactional(readOnly = true)
-    public ModerationQueueListResponse getModerationQueue(ModerationStatus status, Integer priority, int page, int limit) {
-        if (status == null) status = ModerationStatus.PENDING;
+    public ModerationQueueListResponse getModerationQueue(final ModerationStatus status, final Integer priority,
+                                                          final int page, final int limit) {
+        final ModerationStatus effectiveStatus = (status != null) ? status : ModerationStatus.PENDING;
 
-        Sort sort = Sort.by(Sort.Direction.ASC, "priority", "submittedAt");
-        Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit, sort);
+        final Sort sort = Sort.by(Sort.Direction.ASC, "priority", "submittedAt");
+        final Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit, sort);
 
-        ModerationStatus finalStatus = status;
-        Specification<ModerationQueue> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("status"), finalStatus));
-            if (priority != null) {
-                predicates.add(cb.equal(root.get("priority"), priority));
-            }
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
+        final Specification<ModerationQueue> spec = buildQueueSpecification(effectiveStatus, priority);
+        final Page<ModerationQueue> pageResult = moderationQueueRepository.findAll(spec, pageable);
 
-        Page<ModerationQueue> pageResult = moderationQueueRepository.findAll(spec, pageable);
-
-        Set<Long> submitterIds = pageResult.getContent().stream()
+        final Set<Long> submitterIds = pageResult.getContent().stream()
                 .map(ModerationQueue::getSubmitterId)
                 .collect(Collectors.toSet());
-        Map<Long, User> userMap = userRepository.findAllById(submitterIds).stream()
+        final Map<Long, User> userMap = userRepository.findAllById(submitterIds).stream()
                 .collect(Collectors.toMap(User::getId, Function.identity()));
 
-        List<ModerationQueueItemResponse> items = pageResult.getContent().stream()
+        final List<ModerationQueueItemResponse> items = pageResult.getContent().stream()
                 .map(item -> ModerationQueueItemResponse.of(item, userMap.get(item.getSubmitterId())))
                 .toList();
 
-        long totalPending = moderationQueueRepository.count((root, query, cb) ->
+        final long totalPending = moderationQueueRepository.count((root, query, cb) ->
                 cb.equal(root.get("status"), ModerationStatus.PENDING));
 
         return new ModerationQueueListResponse(totalPending, items,
                 new PaginationDto(page, limit, pageResult.getTotalElements(), pageResult.getTotalPages()));
     }
 
-    public ModerationQueueItemResponse claimQueueItem(Long queueId, Long moderatorId) {
-        ModerationQueue item = moderationQueueRepository.findById(queueId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.NOT_FOUND));
+    @Transactional
+    public ModerationQueueItemResponse claimQueueItem(final Long queueId, final Long moderatorId) {
+        final ModerationQueue item = findQueueItemOrThrow(queueId);
 
         if (item.getStatus() == ModerationStatus.UNDER_REVIEW) {
-            if (item.getModeratorId() != null && !item.getModeratorId().equals(moderatorId)) {
-                throw new ConflictException(ErrorCode.ALREADY_UNDER_REVIEW);
-            }
+            validateNotClaimedByOther(item, moderatorId);
         }
 
         item.assignModerator(moderatorId);
         moderationQueueRepository.save(item);
 
-        User submitter = userRepository.findById(item.getSubmitterId()).orElse(null);
+        final User submitter = userRepository.findById(item.getSubmitterId()).orElse(null);
         return ModerationQueueItemResponse.of(item, submitter);
     }
 
-    public void approve(Long queueId, Long moderatorId, String comment) {
-        ModerationQueue item = moderationQueueRepository.findById(queueId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.NOT_FOUND));
-
-        if (item.getModeratorId() != null && !item.getModeratorId().equals(moderatorId)) {
-            throw new ForbiddenException(ErrorCode.ACCESS_DENIED);
-        }
-        if (item.getModeratorId() == null) {
-            throw new ForbiddenException(ErrorCode.ACCESS_DENIED); // Must claim first
-        }
+    @Transactional
+    public void approve(final Long queueId, final Long moderatorId, final String comment) {
+        final ModerationQueue item = findQueueItemOrThrow(queueId);
+        validateModeratorOwnership(item, moderatorId);
 
         item.approve(comment);
         publishEntity(item);
         moderationQueueRepository.save(item);
     }
 
-    public void reject(Long queueId, Long moderatorId, RejectionReason reason, String comment) {
-        ModerationQueue item = moderationQueueRepository.findById(queueId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.NOT_FOUND));
-
-        if (item.getModeratorId() != null && !item.getModeratorId().equals(moderatorId)) {
-            throw new ForbiddenException(ErrorCode.ACCESS_DENIED);
-        }
+    @Transactional
+    public void reject(final Long queueId, final Long moderatorId, final RejectionReason reason, final String comment) {
+        final ModerationQueue item = findQueueItemOrThrow(queueId);
+        validateNotClaimedByOther(item, moderatorId);
 
         item.reject(reason, comment);
         moderationQueueRepository.save(item);
     }
 
-    private void publishEntity(ModerationQueue item) {
+    private ModerationQueue findQueueItemOrThrow(final Long queueId) {
+        return moderationQueueRepository.findById(queueId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.MODERATION_ITEM_NOT_FOUND));
+    }
+
+    private void validateModeratorOwnership(final ModerationQueue item, final Long moderatorId) {
+        if (item.getModeratorId() == null) {
+            throw new ForbiddenException(ErrorCode.MODERATION_NOT_CLAIMED);
+        }
+        if (!item.getModeratorId().equals(moderatorId)) {
+            throw new ForbiddenException(ErrorCode.MODERATION_CLAIMED_BY_OTHER);
+        }
+    }
+
+    private void validateNotClaimedByOther(final ModerationQueue item, final Long moderatorId) {
+        if (item.getModeratorId() != null && !item.getModeratorId().equals(moderatorId)) {
+            throw new ConflictException(ErrorCode.MODERATION_CLAIMED_BY_OTHER);
+        }
+    }
+
+    private ModerationSubmitResponse handleSpamSubmission(final ModerationSubmitRequest request, final Long submitterId) {
+        final ModerationQueue spamItem = ModerationQueue.builder()
+                .entityType(request.entityType())
+                .entityId(request.entityId())
+                .submitterId(submitterId)
+                .metaComment(request.metaComment())
+                .priority(2)
+                .build();
+        spamItem.reject(RejectionReason.SPAM_ABUSE, "Automated spam detection.");
+        moderationQueueRepository.save(spamItem);
+        return new ModerationSubmitResponse(spamItem.getId(), ModerationStatus.REJECTED, "Submission rejected due to spam suspicion.", "N/A");
+    }
+
+    private Specification<ModerationQueue> buildQueueSpecification(final ModerationStatus status, final Integer priority) {
+        return (root, query, cb) -> {
+            final List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("status"), status));
+            if (priority != null) {
+                predicates.add(cb.equal(root.get("priority"), priority));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+
+    private void publishEntity(final ModerationQueue item) {
         switch (item.getEntityType()) {
             case RELEASE:
                 if (item.getEntityId() != null) {

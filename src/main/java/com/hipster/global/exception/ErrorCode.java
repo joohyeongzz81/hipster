@@ -39,7 +39,12 @@ public enum ErrorCode {
     ALREADY_UNDER_REVIEW(4009, HttpStatus.CONFLICT, "이미 다른 모더레이터가 검토 중입니다."),
 
     // 5xxx: Chart Domain Custom Errors
-    INVALID_CHART_LIMIT(5000, HttpStatus.BAD_REQUEST, "차트 조회 개수는 10 이상 1000 이하여야 합니다.");
+    INVALID_CHART_LIMIT(5000, HttpStatus.BAD_REQUEST, "차트 조회 개수는 10 이상 1000 이하여야 합니다."),
+
+    // 6xxx: Moderation Domain Custom Errors
+    MODERATION_ITEM_NOT_FOUND(6000, HttpStatus.NOT_FOUND, "모더레이션 항목을 찾을 수 없습니다."),
+    MODERATION_NOT_CLAIMED(6001, HttpStatus.FORBIDDEN, "먼저 해당 항목을 담당해야 합니다."),
+    MODERATION_CLAIMED_BY_OTHER(6002, HttpStatus.FORBIDDEN, "다른 모더레이터가 담당 중인 항목입니다.");
 
     private final int code;
     private final HttpStatus status;

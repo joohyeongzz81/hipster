@@ -21,7 +21,7 @@ public record ModerationQueueItemResponse(
         LocalDateTime submittedAt,
         Long daysSinceSubmit
 ) {
-    public static ModerationQueueItemResponse of(ModerationQueue item, User submitter) {
+    public static ModerationQueueItemResponse of(final ModerationQueue item, final User submitter) {
         return new ModerationQueueItemResponse(
                 item.getId(),
                 item.getEntityType(),

@@ -13,25 +13,24 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class ModerationService {
 
     private final ModerationQueueRepository moderationQueueRepository;
     private final UserRepository userRepository;
 
-    public void submit(Long submitterId, SubmitRequest request) {
-        User user = userRepository.findById(submitterId)
+    @Transactional
+    public void submit(final Long submitterId, final SubmitRequest request) {
+        final User user = userRepository.findById(submitterId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
 
-        ModerationQueue queueItem = ModerationQueue.builder()
+        final ModerationQueue queueItem = ModerationQueue.builder()
                 .entityType(request.entityType())
                 .entityId(request.entityId())
                 .submitterId(submitterId)
                 .metaComment(request.metaComment())
-                .priority(2) // Default priority P2
+                .priority(2)
                 .build();
 
-        // Check for trusted user auto-approval (weightingScore > 0.8)
         if (user.getWeightingScore() > 0.8) {
             queueItem.autoApprove();
         }

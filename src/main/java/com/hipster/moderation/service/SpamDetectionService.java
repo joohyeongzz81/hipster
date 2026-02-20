@@ -15,26 +15,36 @@ public class SpamDetectionService {
 
     private final ModerationQueueRepository moderationQueueRepository;
 
-    public boolean detectSpamPattern(Long submitterId, EntityType entityType, Long entityId, String metaComment) {
-        // 1. Check submission count in last 24 hours (> 10 is spam)
-        long recentSubmissions = moderationQueueRepository.countBySubmitterIdAndSubmittedAtAfter(submitterId, LocalDateTime.now().minusDays(1));
-        if (recentSubmissions > 10) {
+    public boolean detectSpamPattern(final Long submitterId, final EntityType entityType,
+                                     final Long entityId, final String metaComment) {
+        if (isExcessiveSubmissions(submitterId)) {
             return true;
         }
 
-        // 2. Check metaComment for banned phrases (e.g., "I am the artist")
-        if (metaComment != null && metaComment.trim().equalsIgnoreCase("I am the artist")) {
+        if (isBannedPhrase(metaComment)) {
             return true;
         }
 
-        // 3. Check duplicate submissions (>= 3 for same entity in last 7 days)
-        if (entityId != null) {
-            long duplicateSubmissions = moderationQueueRepository.countByEntityTypeAndEntityIdAndSubmittedAtAfter(entityType, entityId, LocalDateTime.now().minusDays(7));
-            if (duplicateSubmissions >= 3) {
-                return true;
-            }
+        if (entityId != null && isDuplicateSubmission(entityType, entityId)) {
+            return true;
         }
 
         return false;
+    }
+
+    private boolean isExcessiveSubmissions(final Long submitterId) {
+        final long recentSubmissions = moderationQueueRepository
+                .countBySubmitterIdAndSubmittedAtAfter(submitterId, LocalDateTime.now().minusDays(1));
+        return recentSubmissions > 10;
+    }
+
+    private boolean isBannedPhrase(final String metaComment) {
+        return metaComment != null && metaComment.trim().equalsIgnoreCase("I am the artist");
+    }
+
+    private boolean isDuplicateSubmission(final EntityType entityType, final Long entityId) {
+        final long duplicateSubmissions = moderationQueueRepository
+                .countByEntityTypeAndEntityIdAndSubmittedAtAfter(entityType, entityId, LocalDateTime.now().minusDays(7));
+        return duplicateSubmissions >= 3;
     }
 }

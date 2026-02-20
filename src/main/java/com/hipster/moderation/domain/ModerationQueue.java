@@ -71,8 +71,8 @@ public class ModerationQueue {
     private LocalDateTime updatedAt;
 
     @Builder
-    public ModerationQueue(EntityType entityType, Long entityId, Long submitterId,
-                           String metaComment, Integer priority) {
+    public ModerationQueue(final EntityType entityType, final Long entityId, final Long submitterId,
+                           final String metaComment, final Integer priority) {
         this.entityType = entityType;
         this.entityId = entityId;
         this.submitterId = submitterId;
@@ -84,7 +84,7 @@ public class ModerationQueue {
     }
 
     // Business Methods
-    public void assignModerator(Long moderatorId) {
+    public void assignModerator(final Long moderatorId) {
         this.moderatorId = moderatorId;
         this.status = ModerationStatus.UNDER_REVIEW;
     }
@@ -94,7 +94,7 @@ public class ModerationQueue {
         this.processedAt = LocalDateTime.now();
     }
 
-    public void approve(String comment) {
+    public void approve(final String comment) {
         this.status = ModerationStatus.APPROVED;
         this.moderatorComment = comment;
         this.processedAt = LocalDateTime.now();
@@ -105,7 +105,7 @@ public class ModerationQueue {
         this.processedAt = LocalDateTime.now();
     }
 
-    public void reject(RejectionReason reason, String comment) {
+    public void reject(final RejectionReason reason, final String comment) {
         this.status = ModerationStatus.REJECTED;
         this.rejectionReason = reason.name();
         this.moderatorComment = comment;
