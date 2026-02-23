@@ -1,6 +1,5 @@
 package com.hipster.track.service;
 
-import com.hipster.track.domain.Track;
 import com.hipster.track.dto.response.TrackResponse;
 import com.hipster.track.repository.TrackRepository;
 import lombok.RequiredArgsConstructor;

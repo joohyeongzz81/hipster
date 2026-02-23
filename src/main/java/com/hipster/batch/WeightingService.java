@@ -8,17 +8,22 @@ import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryUsage;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -36,32 +41,20 @@ public class WeightingService {
     private final RatingRepository ratingRepository;
     private final ReviewRepository reviewRepository;
 
-    @Transactional
-    public void recalculateWeightings() {
-        log.info("Starting user weighting recalculation batch job.");
-        PageRequest pageRequest = PageRequest.of(0, 100);
-        Page<User> userPage;
-
-        do {
-            userPage = userRepository.findAll(pageRequest);
-            userPage.getContent().forEach(user -> {
-                final double newWeight = calculateUserWeighting(user.getId(), LocalDateTime.now());
-                user.updateWeightingScore(newWeight);
-            });
-            pageRequest = pageRequest.next();
-        } while (userPage.hasNext());
-
-        log.info("Finished user weighting recalculation batch job.");
+    private String collectHeapSnapshot(final String label) {
+        final MemoryUsage heap = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
+        final long usedMB = heap.getUsed() / 1024 / 1024;
+        final long maxMB = heap.getMax() / 1024 / 1024;
+        return String.format("%-35s → %dMB / 최대 %dMB", label, usedMB, maxMB);
     }
 
-    private double calculateUserWeighting(final Long userId, final LocalDateTime calculationDate) {
-        final List<Rating> ratings = ratingRepository.findByUserId(userId);
+    private double calculateUserWeighting(final User user, final List<Rating> ratings,
+                                          final List<Review> reviews, final LocalDateTime calculationDate) {
         if (ratings.size() < 10) {
             return 0.0;
         }
 
-        final List<Review> reviews = reviewRepository.findByUserId(userId);
-        final LocalDateTime lastActiveDate = getLastActiveDate(ratings, reviews, userId);
+        final LocalDateTime lastActiveDate = getLastActiveDate(ratings, reviews, user);
 
         final double baseWeight = calculateBaseWeighting(ratings, lastActiveDate, calculationDate);
         final double reviewBonus = calculateReviewBonus(reviews);
@@ -71,8 +64,16 @@ public class WeightingService {
         return Math.max(0.0, Math.min(1.25, finalWeight));
     }
 
+    /**
+     * Spring Batch Processor에서 호출하는 public 진입점
+     */
+    public double calculateUserWeightingForBatch(final User user, final List<Rating> ratings,
+                                                 final List<Review> reviews) {
+        return calculateUserWeighting(user, ratings, reviews, LocalDateTime.now());
+    }
+
     private LocalDateTime getLastActiveDate(final List<Rating> ratings, final List<Review> reviews,
-                                            final Long userId) {
+                                            final User user) {
         final Optional<LocalDateTime> maxRatingDate = ratings.stream()
                 .map(Rating::getCreatedAt)
                 .max(Comparator.naturalOrder());
@@ -84,8 +85,7 @@ public class WeightingService {
         return Stream.of(maxRatingDate, maxReviewDate)
                 .flatMap(Optional::stream)
                 .max(Comparator.naturalOrder())
-                .orElseGet(() -> userRepository.findById(userId)
-                        .map(User::getLastActiveDate)
+                .orElseGet(() -> Optional.ofNullable(user.getLastActiveDate())
                         .orElse(LocalDateTime.now()));
     }
 

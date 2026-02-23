@@ -4,6 +4,9 @@ import com.hipster.rating.domain.Rating;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -22,5 +25,11 @@ public interface RatingRepository extends JpaRepository<Rating, Long> {
 
     List<Rating> findByUserId(Long userId);
 
+    List<Rating> findByUserIdIn(List<Long> userIds);
+
     List<Rating> findByReleaseId(Long releaseId);
+
+    @Modifying
+    @Query("UPDATE Rating r SET r.weightedScore = r.score * :userWeightingScore WHERE r.userId = :userId")
+    int bulkUpdateWeightedScoreByUserId(@Param("userId") Long userId, @Param("userWeightingScore") Double userWeightingScore);
 }
