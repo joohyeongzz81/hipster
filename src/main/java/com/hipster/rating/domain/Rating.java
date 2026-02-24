@@ -18,7 +18,8 @@ import java.time.LocalDateTime;
 @Table(name = "ratings", indexes = {
         @Index(name = "idx_ratings_user_release", columnList = "userId, releaseId", unique = true),
         @Index(name = "idx_ratings_release_weighted", columnList = "releaseId"),
-        @Index(name = "idx_ratings_user_created", columnList = "userId, createdAt DESC")
+        @Index(name = "idx_ratings_user_created", columnList = "userId, createdAt DESC"),
+        @Index(name = "idx_ratings_covering", columnList = "userId, score, createdAt")
 })
 public class Rating {
 

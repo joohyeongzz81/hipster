@@ -1,17 +1,11 @@
 package com.hipster.batch.processor;
 
 import com.hipster.batch.WeightingService;
-import com.hipster.rating.domain.Rating;
-import com.hipster.rating.repository.RatingRepository;
-import com.hipster.review.domain.Review;
-import com.hipster.review.repository.ReviewRepository;
 import com.hipster.user.domain.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.stereotype.Component;
-
-import java.util.List;
 
 /**
  * 단건 User를 받아 가중치를 계산하고 User에 반영.
@@ -24,15 +18,10 @@ import java.util.List;
 public class WeightingItemProcessor implements ItemProcessor<User, User> {
 
     private final WeightingService weightingService;
-    private final RatingRepository ratingRepository;
-    private final ReviewRepository reviewRepository;
 
     @Override
     public User process(final User user) {
-        final List<Rating> ratings = ratingRepository.findByUserId(user.getId());
-        final List<Review> reviews = reviewRepository.findByUserId(user.getId());
-
-        final double newWeight = weightingService.calculateUserWeightingForBatch(user, ratings, reviews);
+        final double newWeight = weightingService.calculateUserWeightingForBatch(user);
         user.updateWeightingScore(newWeight);
 
         return user;
