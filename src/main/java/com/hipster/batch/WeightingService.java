@@ -1,7 +1,9 @@
 package com.hipster.batch;
 
 import com.hipster.user.domain.User;
+import com.hipster.user.domain.UserWeightStats;
 import com.hipster.user.repository.UserRepository;
+import com.hipster.user.repository.UserWeightStatsRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,7 +30,7 @@ public class WeightingService {
     private static final int L_TARGET = 100;
 
     private final UserRepository userRepository;
-
+    private final UserWeightStatsRepository userWeightStatsRepository;
     private final JdbcTemplate jdbcTemplate;
 
     private String collectHeapSnapshot(final String label) {
@@ -88,7 +90,31 @@ public class WeightingService {
         final double reviewBonus = calculateReviewBonus(stats);
 
         final double finalWeight = baseWeight * (1 + reviewBonus);
-        return Math.max(0.0, Math.min(1.25, finalWeight));
+        final double limitedWeight = Math.max(0.0, Math.min(1.25, finalWeight));
+
+        // [Chapter 7] DB Aggregation 결과를 Summary Table(user_weight_stats)에 Upsert
+        UserWeightStats weightStats = userWeightStatsRepository.findById(user.getId()).orElse(null);
+        if (weightStats == null) {
+            weightStats = UserWeightStats.builder()
+                    .userId(user.getId())
+                    .ratingCount(stats.ratingCount())
+                    .ratingVariance(stats.ratingVariance())
+                    .reviewCount(stats.reviewCount())
+                    .reviewAvgLength(stats.reviewAvgLength())
+                    .lastActiveDate(lastActiveDate)
+                    .build();
+            userWeightStatsRepository.save(weightStats);
+        } else {
+            weightStats.update(
+                    stats.ratingCount(), 
+                    stats.ratingVariance(), 
+                    stats.reviewCount(), 
+                    stats.reviewAvgLength(), 
+                    lastActiveDate
+            );
+        }
+
+        return limitedWeight;
     }
 
 
