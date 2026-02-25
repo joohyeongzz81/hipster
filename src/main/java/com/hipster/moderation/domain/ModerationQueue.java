@@ -47,7 +47,7 @@ public class ModerationQueue {
     @ColumnDefault("2")
     private Integer priority = 2; // Default P2 (Medium)
 
-    @Column(nullable = false, columnDefinition = "TEXT")
+    @Column(nullable = true, columnDefinition = "TEXT")
     private String metaComment;
 
     @Column(nullable = true, length = 50)
