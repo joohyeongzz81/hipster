@@ -59,7 +59,7 @@ public class AuthService {
 
     @Transactional
     public TokenResponse refreshToken(final String refreshTokenValue) {
-        jwtTokenProvider.validateToken(refreshTokenValue);
+        jwtTokenProvider.validateRefreshTokenSignature(refreshTokenValue);
 
         final RefreshToken refreshToken = refreshTokenRepository.findByToken(refreshTokenValue)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.REFRESH_TOKEN_NOT_FOUND));

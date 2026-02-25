@@ -60,6 +60,21 @@ public class JwtTokenProvider {
         }
     }
 
+    /**
+     * Refresh Token 재발급 전용 서명 검증 메서드.
+     * 만료된 토큰이더라도 서명이 유효하면 통과시키고,
+     * 만료 여부는 DB expiryDate 기준으로 판단합니다.
+     */
+    public void validateRefreshTokenSignature(final String token) {
+        try {
+            Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
+        } catch (ExpiredJwtException ignored) {
+            // 만료는 DB expiryDate 기준으로 판단하므로 무시
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new InvalidTokenException(ErrorCode.INVALID_TOKEN);
+        }
+    }
+
     public Long extractUserId(final String token) {
         return Long.parseLong(extractAllClaims(token).getSubject());
     }
