@@ -28,6 +28,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import com.hipster.rating.domain.Rating;
 import com.hipster.rating.repository.RatingRepository;
+import com.hipster.release.domain.ReleaseStatus;
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
 import org.springframework.transaction.annotation.Transactional;
@@ -140,7 +141,7 @@ public class ReleaseService {
     private Specification<Release> buildSearchSpecification(final ReleaseSearchRequest request) {
         return (root, query, cb) -> {
             final List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.isFalse(root.get("pendingApproval")));
+            predicates.add(cb.equal(root.get("status"), ReleaseStatus.ACTIVE));
 
             if (StringUtils.hasText(request.q())) {
                 predicates.add(cb.like(cb.lower(root.get("title")), "%" + request.q().toLowerCase() + "%"));

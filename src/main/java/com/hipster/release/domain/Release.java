@@ -5,7 +5,6 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -18,7 +17,7 @@ import java.time.LocalDateTime;
 @Table(name = "releases", indexes = {
         @Index(name = "idx_releases_title", columnList = "title"),
         @Index(name = "idx_releases_type_date", columnList = "releaseType, releaseDate"),
-        @Index(name = "idx_releases_pending", columnList = "pendingApproval")
+        @Index(name = "idx_releases_status", columnList = "status")
 })
 public class Release {
 
@@ -48,9 +47,9 @@ public class Release {
     @Column(length = 100)
     private String label;
 
-    @Column(nullable = false)
-    @ColumnDefault("true")
-    private Boolean pendingApproval = true;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ReleaseStatus status = ReleaseStatus.PENDING;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
@@ -73,6 +72,10 @@ public class Release {
     }
 
     public void approve() {
-        this.pendingApproval = false;
+        this.status = ReleaseStatus.ACTIVE;
+    }
+
+    public void delete() {
+        this.status = ReleaseStatus.DELETED;
     }
 }

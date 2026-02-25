@@ -1,5 +1,9 @@
 package com.hipster.moderation.service;
 
+import com.hipster.artist.domain.Artist;
+import com.hipster.artist.repository.ArtistRepository;
+import com.hipster.genre.domain.Genre;
+import com.hipster.genre.repository.GenreRepository;
 import com.hipster.global.dto.response.PaginationDto;
 import com.hipster.global.exception.ConflictException;
 import com.hipster.global.exception.ErrorCode;
@@ -44,6 +48,8 @@ public class ModerationQueueService {
     private final SpamDetectionService spamDetectionService;
     private final UserRepository userRepository;
     private final ReleaseRepository releaseRepository;
+    private final ArtistRepository artistRepository;
+    private final GenreRepository genreRepository;
 
     @Transactional
     public ModerationSubmitResponse submit(final ModerationSubmitRequest request, final Long submitterId) {
@@ -182,14 +188,12 @@ public class ModerationQueueService {
     }
 
     private void publishEntity(final ModerationQueue item) {
+        if (item.getEntityId() == null) return;
         switch (item.getEntityType()) {
-            case RELEASE:
-                if (item.getEntityId() != null) {
-                    releaseRepository.findById(item.getEntityId()).ifPresent(Release::approve);
-                }
-                break;
-            default:
-                log.warn("Auto-publish not implemented for type: {}", item.getEntityType());
+            case RELEASE -> releaseRepository.findById(item.getEntityId()).ifPresent(Release::approve);
+            case ARTIST  -> artistRepository.findById(item.getEntityId()).ifPresent(Artist::approve);
+            case GENRE   -> genreRepository.findById(item.getEntityId()).ifPresent(Genre::approve);
+            default      -> log.warn("Auto-publish not implemented for type: {}", item.getEntityType());
         }
     }
 }

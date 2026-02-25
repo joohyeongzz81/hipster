@@ -1,6 +1,7 @@
 package com.hipster.genre.repository;
 
 import com.hipster.genre.domain.Genre;
+import com.hipster.genre.domain.GenreStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -11,5 +12,5 @@ public interface GenreRepository extends JpaRepository<Genre, Long> {
 
     List<Genre> findByParentId(Long parentId);
 
-    List<Genre> findAllByPendingApprovalFalse();
+    List<Genre> findAllByStatus(GenreStatus status);
 }

@@ -1,6 +1,7 @@
 package com.hipster.genre.service;
 
 import com.hipster.genre.domain.Genre;
+import com.hipster.genre.domain.GenreStatus;
 import com.hipster.genre.dto.request.CreateGenreRequest;
 import com.hipster.genre.dto.response.GenreNodeResponse;
 import com.hipster.genre.repository.GenreRepository;
@@ -44,7 +45,7 @@ public class GenreService {
     }
 
     public List<GenreNodeResponse> getGenreTree() {
-        final List<Genre> allGenres = genreRepository.findAllByPendingApprovalFalse();
+        final List<Genre> allGenres = genreRepository.findAllByStatus(GenreStatus.ACTIVE);
         final Map<Long, GenreNodeResponse> nodeMap = buildNodeMap(allGenres);
         return assembleTree(allGenres, nodeMap);
     }

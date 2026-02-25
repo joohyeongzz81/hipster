@@ -12,6 +12,7 @@ import com.hipster.global.exception.ErrorCode;
 import com.hipster.rating.domain.Rating;
 import com.hipster.rating.repository.RatingRepository;
 import com.hipster.release.domain.Release;
+import com.hipster.release.domain.ReleaseStatus;
 import com.hipster.release.repository.ReleaseRepository;
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
@@ -67,7 +68,7 @@ public class ChartService {
         log.info("Starting chart score update");
         final LocalDateTime startTime = LocalDateTime.now();
 
-        final List<Release> releases = releaseRepository.findAllByPendingApprovalFalse();
+        final List<Release> releases = releaseRepository.findAllByStatus(ReleaseStatus.ACTIVE);
         int processedCount = 0;
 
         for (final Release release : releases) {
