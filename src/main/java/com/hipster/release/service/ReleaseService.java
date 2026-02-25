@@ -37,6 +37,10 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -88,12 +92,19 @@ public class ReleaseService {
         final List<TrackResponse> tracks = trackService.getTracksByReleaseId(releaseId);
 
         final List<Rating> ratings = ratingRepository.findByReleaseId(releaseId);
+
+        final Set<Long> userIds = ratings.stream()
+                .map(Rating::getUserId)
+                .collect(Collectors.toSet());
+        final Map<Long, User> userMap = userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+
         double totalWeightedScore = 0.0;
         double totalWeighting = 0.0;
 
         for (final Rating rating : ratings) {
-            final User user = userRepository.findById(rating.getUserId()).orElse(null);
-            if (user != null) {
+            final User user = userMap.get(rating.getUserId());
+            if (user != null && user.getWeightingScore() > 0) {
                 totalWeightedScore += rating.getWeightedScore();
                 totalWeighting += user.getWeightingScore();
             }
