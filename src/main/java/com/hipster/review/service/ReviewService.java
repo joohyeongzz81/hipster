@@ -11,6 +11,8 @@ import com.hipster.review.dto.request.CreateReviewRequest;
 import com.hipster.review.dto.response.ReviewResponse;
 import com.hipster.review.dto.request.UpdateReviewRequest;
 import com.hipster.review.repository.ReviewRepository;
+import com.hipster.release.domain.Release;
+import com.hipster.release.domain.ReleaseStatus;
 import com.hipster.release.repository.ReleaseRepository;
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
@@ -39,7 +41,7 @@ public class ReviewService {
 
     @Transactional
     public ReviewResponse createReview(final Long releaseId, final CreateReviewRequest request, final Long userId) {
-        validateReleaseExists(releaseId);
+        validateActiveRelease(releaseId);
 
         final User user = findUserOrThrow(userId);
 
@@ -53,7 +55,7 @@ public class ReviewService {
     }
 
     public PagedResponse<ReviewResponse> getReviewsByRelease(final Long releaseId, final int page, final int limit) {
-        validateReleaseExists(releaseId);
+        validateActiveRelease(releaseId);
 
         final Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit, Sort.by(Sort.Direction.DESC, "createdAt"));
         final Page<Review> pageResult = reviewRepository.findByReleaseIdAndStatus(releaseId, ReviewStatus.ACTIVE, pageable);
@@ -113,8 +115,10 @@ public class ReviewService {
         }
     }
 
-    private void validateReleaseExists(final Long releaseId) {
-        if (!releaseRepository.existsById(releaseId)) {
+    private void validateActiveRelease(final Long releaseId) {
+        final Release release = releaseRepository.findById(releaseId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.RELEASE_NOT_FOUND));
+        if (release.getStatus() != ReleaseStatus.ACTIVE) {
             throw new NotFoundException(ErrorCode.RELEASE_NOT_FOUND);
         }
     }
