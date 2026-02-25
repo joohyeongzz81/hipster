@@ -5,6 +5,7 @@ import com.hipster.artist.repository.ArtistRepository;
 import com.hipster.genre.domain.Genre;
 import com.hipster.genre.repository.GenreRepository;
 import com.hipster.global.dto.response.PaginationDto;
+import com.hipster.global.exception.BadRequestException;
 import com.hipster.global.exception.ConflictException;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.ForbiddenException;
@@ -114,6 +115,12 @@ public class ModerationQueueService {
     public ModerationQueueItemResponse claimQueueItem(final Long queueId, final Long moderatorId) {
         final ModerationQueue item = findQueueItemOrThrow(queueId);
 
+        if (item.getStatus() == ModerationStatus.APPROVED
+                || item.getStatus() == ModerationStatus.REJECTED
+                || item.getStatus() == ModerationStatus.AUTO_APPROVED) {
+            throw new BadRequestException(ErrorCode.MODERATION_ALREADY_PROCESSED);
+        }
+
         if (item.getStatus() == ModerationStatus.UNDER_REVIEW) {
             validateNotClaimedByOther(item, moderatorId);
         }
@@ -138,7 +145,7 @@ public class ModerationQueueService {
     @Transactional
     public void reject(final Long queueId, final Long moderatorId, final RejectionReason reason, final String comment) {
         final ModerationQueue item = findQueueItemOrThrow(queueId);
-        validateNotClaimedByOther(item, moderatorId);
+        validateModeratorOwnership(item, moderatorId);
 
         item.reject(reason, comment);
         moderationQueueRepository.save(item);
