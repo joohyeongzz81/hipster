@@ -85,6 +85,10 @@ public class ReleaseService {
         final Release release = releaseRepository.findById(releaseId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.RELEASE_NOT_FOUND));
 
+        if (release.getStatus() != ReleaseStatus.ACTIVE) {
+            throw new NotFoundException(ErrorCode.RELEASE_NOT_FOUND);
+        }
+
         final String artistName = artistRepository.findById(release.getArtistId())
                 .map(Artist::getName)
                 .orElse("Unknown Artist");
@@ -101,17 +105,18 @@ public class ReleaseService {
 
         double totalWeightedScore = 0.0;
         double totalWeighting = 0.0;
+        int ratingCount = 0;
 
         for (final Rating rating : ratings) {
             final User user = userMap.get(rating.getUserId());
             if (user != null && user.getWeightingScore() > 0) {
                 totalWeightedScore += rating.getWeightedScore();
                 totalWeighting += user.getWeightingScore();
+                ratingCount++;
             }
         }
 
         final double averageRating = totalWeighting > 0 ? Math.round((totalWeightedScore / totalWeighting) * 100.0) / 100.0 : 0.0;
-        final int ratingCount = ratings.size();
 
         return new ReleaseDetailResponse(
                 release.getId(),
