@@ -7,6 +7,8 @@ import com.hipster.rating.dto.request.CreateRatingRequest;
 import com.hipster.rating.dto.response.RatingResponse;
 import com.hipster.rating.dto.response.RatingResult;
 import com.hipster.rating.repository.RatingRepository;
+import com.hipster.release.domain.Release;
+import com.hipster.release.domain.ReleaseStatus;
 import com.hipster.release.repository.ReleaseRepository;
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
@@ -14,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 @Service
@@ -26,7 +29,10 @@ public class RatingService {
 
     @Transactional
     public RatingResult createOrUpdateRating(final Long releaseId, final CreateRatingRequest request, final Long userId) {
-        if (!releaseRepository.existsById(releaseId)) {
+        final Release release = releaseRepository.findById(releaseId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.RELEASE_NOT_FOUND));
+
+        if (release.getStatus() != ReleaseStatus.ACTIVE) {
             throw new NotFoundException(ErrorCode.RELEASE_NOT_FOUND);
         }
 
@@ -48,7 +54,7 @@ public class RatingService {
 
         ratingRepository.save(rating);
 
-        user.updateLastActiveDate();
+        userRepository.updateLastActiveDate(userId, LocalDateTime.now());
 
         final RatingResponse response = RatingResponse.from(rating, user.getUsername());
         return new RatingResult(response, isCreated);
