@@ -7,6 +7,7 @@ import com.hipster.global.dto.response.PaginationDto;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.NotFoundException;
 import com.hipster.moderation.domain.EntityType;
+import com.hipster.moderation.domain.ModerationStatus;
 import com.hipster.moderation.dto.request.ModerationSubmitRequest;
 import com.hipster.moderation.dto.response.ModerationSubmitResponse;
 import com.hipster.moderation.service.ModerationQueueService;
@@ -67,7 +68,13 @@ public class ReleaseService {
                 request.metaComment()
         );
 
-        return moderationQueueService.submit(modRequest, submitterId);
+        final ModerationSubmitResponse response = moderationQueueService.submit(modRequest, submitterId);
+
+        if (response.status() == ModerationStatus.REJECTED) {
+            releaseRepository.delete(release);
+        }
+
+        return response;
     }
 
     public ReleaseDetailResponse getReleaseDetail(final Long releaseId) {

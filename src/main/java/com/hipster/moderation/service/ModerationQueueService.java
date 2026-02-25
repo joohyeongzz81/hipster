@@ -68,13 +68,14 @@ public class ModerationQueueService {
         final User user = userRepository.findById(submitterId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
 
+        moderationQueueRepository.save(queueItem);
+
         if (user.getWeightingScore() > 0.8) {
             queueItem.autoApprove();
             publishEntity(queueItem);
+            moderationQueueRepository.save(queueItem);
             log.info("Auto-approved submission {} for User {}", queueItem.getId(), submitterId);
         }
-
-        moderationQueueRepository.save(queueItem);
 
         final String estimatedTime = (queueItem.getStatus() == ModerationStatus.AUTO_APPROVED) ? "Instant" : "14 days";
 
