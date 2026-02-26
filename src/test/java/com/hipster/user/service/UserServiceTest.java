@@ -8,6 +8,10 @@ import com.hipster.user.dto.request.ChangePasswordRequest;
 import com.hipster.user.dto.request.DeleteAccountRequest;
 import com.hipster.user.dto.request.UpdateProfileRequest;
 import com.hipster.user.repository.UserRepository;
+import com.hipster.user.repository.UserWeightStatsRepository;
+import com.hipster.rating.repository.RatingRepository;
+import com.hipster.review.repository.ReviewRepository;
+import com.hipster.moderation.repository.ModerationQueueRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,8 +24,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -36,6 +38,18 @@ class UserServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private RatingRepository ratingRepository;
+
+    @Mock
+    private ReviewRepository reviewRepository;
+
+    @Mock
+    private ModerationQueueRepository moderationQueueRepository;
+
+    @Mock
+    private UserWeightStatsRepository userWeightStatsRepository;
 
     @Test
     @DisplayName("회원 프로필(닉네임) 수정 - 성공")
@@ -123,6 +137,10 @@ class UserServiceTest {
         userService.deleteAccount(userId, request);
 
         // then
+        verify(ratingRepository).deleteByUserId(userId);
+        verify(reviewRepository).deleteByUserId(userId);
+        verify(moderationQueueRepository).deleteBySubmitterId(userId);
+        verify(userWeightStatsRepository).deleteByUserId(userId);
         verify(userRepository).delete(user);
     }
 }

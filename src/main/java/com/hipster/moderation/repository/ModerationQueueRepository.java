@@ -25,4 +25,6 @@ public interface ModerationQueueRepository extends JpaRepository<ModerationQueue
     Long countBySubmitterIdAndSubmittedAtAfter(Long submitterId, java.time.LocalDateTime submittedAt);
 
     Long countByEntityTypeAndEntityIdAndSubmittedAtAfter(com.hipster.moderation.domain.EntityType entityType, Long entityId, java.time.LocalDateTime submittedAt);
+
+    void deleteBySubmitterId(Long submitterId);
 }

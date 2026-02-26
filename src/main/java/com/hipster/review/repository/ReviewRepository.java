@@ -22,4 +22,6 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     Page<Review> findByUserIdAndStatus(Long userId, ReviewStatus status, Pageable pageable);
 
     Optional<Review> findByIdAndStatus(Long id, ReviewStatus status);
+
+    void deleteByUserId(Long userId);
 }

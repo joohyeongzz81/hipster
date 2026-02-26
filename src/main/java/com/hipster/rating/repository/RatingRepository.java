@@ -32,4 +32,6 @@ public interface RatingRepository extends JpaRepository<Rating, Long> {
     @Modifying
     @Query("UPDATE Rating r SET r.weightedScore = r.score * :userWeightingScore WHERE r.userId = :userId")
     int bulkUpdateWeightedScoreByUserId(@Param("userId") Long userId, @Param("userWeightingScore") Double userWeightingScore);
+
+    void deleteByUserId(Long userId);
 }
