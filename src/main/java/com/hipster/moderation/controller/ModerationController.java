@@ -10,6 +10,8 @@ import com.hipster.moderation.dto.request.ApproveRequest;
 import com.hipster.moderation.dto.response.ModerationQueueItemResponse;
 import com.hipster.moderation.dto.response.ModerationQueueListResponse;
 import com.hipster.moderation.dto.request.RejectRequest;
+import com.hipster.moderation.dto.response.UserModerationSubmissionResponse;
+import com.hipster.global.dto.response.PagedResponse;
 import com.hipster.moderation.service.ModerationQueueService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -60,5 +62,13 @@ public class ModerationController {
             @RequestBody @Valid final RejectRequest request) {
         moderationQueueService.reject(id, moderator.userId(), request.reason(), request.comment());
         return ResponseEntity.ok(ApiResponse.of(200, "거절 처리되었습니다.", null));
+    }
+
+    @GetMapping("/submissions")
+    public ResponseEntity<ApiResponse<PagedResponse<UserModerationSubmissionResponse>>> getUserSubmissions(
+            @CurrentUser final CurrentUserInfo user,
+            @RequestParam(defaultValue = "1") final int page,
+            @RequestParam(defaultValue = "50") final int limit) {
+        return ResponseEntity.ok(ApiResponse.ok(moderationQueueService.getUserSubmissions(user.userId(), page, limit)));
     }
 }

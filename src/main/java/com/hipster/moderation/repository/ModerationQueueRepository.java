@@ -2,6 +2,7 @@ package com.hipster.moderation.repository;
 
 import com.hipster.moderation.domain.ModerationQueue;
 import com.hipster.moderation.domain.ModerationStatus;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -17,7 +18,7 @@ public interface ModerationQueueRepository extends JpaRepository<ModerationQueue
 
     Long countByStatusAndPriority(ModerationStatus status, Integer priority);
 
-    List<ModerationQueue> findBySubmitterIdOrderBySubmittedAtDesc(Long submitterId, Pageable pageable);
+    Page<ModerationQueue> findBySubmitterIdOrderBySubmittedAtDesc(Long submitterId, Pageable pageable);
 
     Optional<ModerationQueue> findByIdAndStatus(Long id, ModerationStatus status);
 

@@ -17,6 +17,8 @@ import com.hipster.moderation.dto.response.ModerationQueueItemResponse;
 import com.hipster.moderation.dto.response.ModerationQueueListResponse;
 import com.hipster.moderation.dto.request.ModerationSubmitRequest;
 import com.hipster.moderation.dto.response.ModerationSubmitResponse;
+import com.hipster.moderation.dto.response.UserModerationSubmissionResponse;
+import com.hipster.global.dto.response.PagedResponse;
 import com.hipster.moderation.repository.ModerationQueueRepository;
 import com.hipster.release.domain.Release;
 import com.hipster.release.repository.ReleaseRepository;
@@ -109,6 +111,20 @@ public class ModerationQueueService {
 
         return new ModerationQueueListResponse(totalPending, items,
                 new PaginationDto(page, limit, pageResult.getTotalElements(), pageResult.getTotalPages()));
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<UserModerationSubmissionResponse> getUserSubmissions(final Long submitterId, final int page, final int limit) {
+        final Sort sort = Sort.by(Sort.Direction.DESC, "submittedAt");
+        final Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit, sort);
+
+        final Page<ModerationQueue> pageResult = moderationQueueRepository.findBySubmitterIdOrderBySubmittedAtDesc(submitterId, pageable);
+
+        final List<UserModerationSubmissionResponse> items = pageResult.getContent().stream()
+                .map(UserModerationSubmissionResponse::from)
+                .toList();
+
+        return new PagedResponse<>(items, new PaginationDto(page, limit, pageResult.getTotalElements(), pageResult.getTotalPages()));
     }
 
     @Transactional
