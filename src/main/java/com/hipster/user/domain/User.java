@@ -73,6 +73,18 @@ public class User {
         this.lastActiveDate = LocalDateTime.now();
     }
 
+    public void updateUsername(final String newUsername) {
+        if (newUsername != null && !newUsername.isBlank()) {
+            this.username = newUsername;
+        }
+    }
+
+    public void changePassword(final String newPasswordHash) {
+        if (newPasswordHash != null && !newPasswordHash.isBlank()) {
+            this.passwordHash = newPasswordHash;
+        }
+    }
+
     public void updateWeightingScore(final Double score) {
         if (score >= 0.0 && score <= 1.25) {
             this.weightingScore = score;
