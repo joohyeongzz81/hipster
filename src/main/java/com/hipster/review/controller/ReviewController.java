@@ -5,8 +5,9 @@ import com.hipster.auth.dto.response.CurrentUserInfo;
 import com.hipster.global.dto.response.ApiResponse;
 import com.hipster.global.dto.response.PagedResponse;
 import com.hipster.review.dto.request.CreateReviewRequest;
-import com.hipster.review.dto.response.ReviewResponse;
 import com.hipster.review.dto.request.UpdateReviewRequest;
+import com.hipster.review.dto.response.ReviewResponse;
+import com.hipster.review.dto.response.UserReviewResponse;
 import com.hipster.review.service.ReviewService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -15,12 +16,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
+@RequestMapping("/api/v1")
 @RequiredArgsConstructor
 public class ReviewController {
 
     private final ReviewService reviewService;
 
-    @PostMapping("/api/v1/releases/{releaseId}/reviews")
+    @PostMapping("/releases/{releaseId}/reviews")
     public ResponseEntity<ApiResponse<ReviewResponse>> createReview(
             @PathVariable final Long releaseId,
             @RequestBody @Valid final CreateReviewRequest request,
@@ -30,7 +32,7 @@ public class ReviewController {
                 .body(ApiResponse.of(HttpStatus.CREATED.value(), "리뷰가 등록되었습니다.", response));
     }
 
-    @GetMapping("/api/v1/releases/{releaseId}/reviews")
+    @GetMapping("/releases/{releaseId}/reviews")
     public ResponseEntity<ApiResponse<PagedResponse<ReviewResponse>>> getReviewsByRelease(
             @PathVariable final Long releaseId,
             @RequestParam(defaultValue = "1") final int page,
@@ -38,12 +40,12 @@ public class ReviewController {
         return ResponseEntity.ok(ApiResponse.ok(reviewService.getReviewsByRelease(releaseId, page, limit)));
     }
 
-    @GetMapping("/api/v1/reviews/{id}")
+    @GetMapping("/reviews/{id}")
     public ResponseEntity<ApiResponse<ReviewResponse>> getReview(@PathVariable final Long id) {
         return ResponseEntity.ok(ApiResponse.ok(reviewService.getReview(id)));
     }
 
-    @PutMapping("/api/v1/reviews/{id}")
+    @PutMapping("/reviews/{id}")
     public ResponseEntity<ApiResponse<ReviewResponse>> updateReview(
             @PathVariable final Long id,
             @RequestBody @Valid final UpdateReviewRequest request,
@@ -51,7 +53,7 @@ public class ReviewController {
         return ResponseEntity.ok(ApiResponse.ok(reviewService.updateReview(id, request, user.userId())));
     }
 
-    @DeleteMapping("/api/v1/reviews/{id}")
+    @DeleteMapping("/reviews/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteReview(
             @PathVariable final Long id,
             @CurrentUser final CurrentUserInfo user) {
@@ -59,8 +61,8 @@ public class ReviewController {
         return ResponseEntity.ok(ApiResponse.of(200, "리뷰가 삭제되었습니다.", null));
     }
 
-    @GetMapping("/api/v1/users/{userId}/reviews")
-    public ResponseEntity<ApiResponse<PagedResponse<com.hipster.review.dto.response.UserReviewResponse>>> getUserReviews(
+    @GetMapping("/users/{userId}/reviews")
+    public ResponseEntity<ApiResponse<PagedResponse<UserReviewResponse>>> getUserReviews(
             @PathVariable final Long userId,
             @RequestParam(defaultValue = "1") final int page,
             @RequestParam(defaultValue = "20") final int limit) {

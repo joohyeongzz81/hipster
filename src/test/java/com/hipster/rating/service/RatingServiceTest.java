@@ -1,17 +1,16 @@
-package com.hipster.review.service;
+package com.hipster.rating.service;
 
 import com.hipster.artist.domain.Artist;
 import com.hipster.artist.repository.ArtistRepository;
 import com.hipster.global.dto.response.PagedResponse;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.NotFoundException;
+import com.hipster.rating.domain.Rating;
+import com.hipster.rating.dto.response.UserRatingResponse;
+import com.hipster.rating.repository.RatingRepository;
 import com.hipster.release.domain.Release;
 import com.hipster.release.domain.ReleaseType;
 import com.hipster.release.repository.ReleaseRepository;
-import com.hipster.review.domain.Review;
-import com.hipster.review.domain.ReviewStatus;
-import com.hipster.review.dto.response.UserReviewResponse;
-import com.hipster.review.repository.ReviewRepository;
 import com.hipster.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,37 +33,38 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
 @ExtendWith(MockitoExtension.class)
-class ReviewServiceTest {
+class RatingServiceTest {
 
     @InjectMocks
-    private ReviewService reviewService;
+    private RatingService ratingService;
 
     @Mock
-    private ReviewRepository reviewRepository;
-
-    @Mock
-    private ReleaseRepository releaseRepository;
+    private RatingRepository ratingRepository;
 
     @Mock
     private UserRepository userRepository;
 
     @Mock
+    private ReleaseRepository releaseRepository;
+
+    @Mock
     private ArtistRepository artistRepository;
 
     @Test
-    @DisplayName("사용자별 리뷰 목록 조회 - 성공")
-    void getUserReviews_Success() {
+    @DisplayName("사용자별 평점 목록 조회 - 성공")
+    void getUserRatings_Success() {
         // given
         Long userId = 1L;
         Long releaseId = 100L;
         Long artistId = 200L;
+        Double userWeightingScore = 1.0;
 
         given(userRepository.existsById(userId)).willReturn(true);
 
-        Review review = Review.builder().userId(userId).releaseId(releaseId).content("Great Album!").build();
-        Page<Review> reviewPage = new PageImpl<>(List.of(review));
-        given(reviewRepository.findByUserIdAndStatus(eq(userId), eq(ReviewStatus.ACTIVE), any(Pageable.class)))
-                .willReturn(reviewPage);
+        Rating rating = Rating.builder().userId(userId).releaseId(releaseId).score(4.5).userWeightingScore(userWeightingScore).build();
+        Page<Rating> ratingPage = new PageImpl<>(List.of(rating));
+        given(ratingRepository.findByUserIdOrderByCreatedAtDesc(eq(userId), any(Pageable.class)))
+                .willReturn(ratingPage);
 
         Release release = Release.builder().artistId(artistId).title("Test Title").releaseType(ReleaseType.ALBUM).releaseDate(LocalDate.now()).build();
         given(releaseRepository.findAllById(Set.of(releaseId))).willReturn(List.of(release));
@@ -73,27 +73,27 @@ class ReviewServiceTest {
         given(artistRepository.findAllById(Set.of(artistId))).willReturn(List.of(artist));
 
         // when
-        PagedResponse<UserReviewResponse> response = reviewService.getUserReviews(userId, 1, 20);
+        PagedResponse<UserRatingResponse> response = ratingService.getUserRatings(userId, 1, 20);
 
         // then
         assertThat(response.data()).hasSize(1);
-        UserReviewResponse reviewResponse = response.data().get(0);
-        assertThat(reviewResponse.releaseTitle()).isEqualTo("Test Title");
-        assertThat(reviewResponse.artistName()).isEqualTo("Test Artist");
-        assertThat(reviewResponse.content()).isEqualTo("Great Album!");
+        UserRatingResponse ratingResponse = response.data().get(0);
+        assertThat(ratingResponse.releaseTitle()).isEqualTo("Test Title");
+        assertThat(ratingResponse.artistName()).isEqualTo("Test Artist");
+        assertThat(ratingResponse.score()).isEqualTo(4.5);
         assertThat(response.pagination().totalItems()).isEqualTo(1L);
     }
 
     @Test
-    @DisplayName("사용자별 리뷰 목록 조회 - 실패 (존재하지 않는 사용자)")
-    void getUserReviews_Fail_UserNotFound() {
+    @DisplayName("사용자별 평점 목록 조회 - 실패 (존재하지 않는 사용자)")
+    void getUserRatings_Fail_UserNotFound() {
         // given
         Long userId = 999L;
         given(userRepository.existsById(userId)).willReturn(false);
 
         // when & then
         NotFoundException exception = assertThrows(NotFoundException.class, () ->
-                reviewService.getUserReviews(userId, 1, 20)
+                ratingService.getUserRatings(userId, 1, 20)
         );
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.TARGET_USER_NOT_FOUND);
