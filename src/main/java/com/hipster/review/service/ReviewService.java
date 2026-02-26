@@ -16,6 +16,9 @@ import com.hipster.release.domain.ReleaseStatus;
 import com.hipster.release.repository.ReleaseRepository;
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
+import com.hipster.artist.domain.Artist;
+import com.hipster.artist.repository.ArtistRepository;
+import com.hipster.review.dto.response.UserReviewResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -38,6 +41,7 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
     private final ReleaseRepository releaseRepository;
     private final UserRepository userRepository;
+    private final ArtistRepository artistRepository;
 
     @Transactional
     public ReviewResponse createReview(final Long releaseId, final CreateReviewRequest request, final Long userId) {
@@ -102,6 +106,52 @@ public class ReviewService {
 
         review.delete();
         reviewRepository.save(review);
+    }
+
+    public PagedResponse<UserReviewResponse> getUserReviews(final Long targetUserId, final int page, final int limit) {
+        if (!userRepository.existsById(targetUserId)) {
+            throw new NotFoundException(ErrorCode.TARGET_USER_NOT_FOUND);
+        }
+
+        final Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit, Sort.by(Sort.Direction.DESC, "createdAt"));
+        final Page<Review> pageResult = reviewRepository.findByUserIdAndStatus(targetUserId, ReviewStatus.ACTIVE, pageable);
+
+        final Set<Long> releaseIds = pageResult.getContent().stream()
+                .map(Review::getReleaseId)
+                .collect(Collectors.toSet());
+
+        final Map<Long, Release> releaseMap = releaseRepository.findAllById(releaseIds).stream()
+                .collect(Collectors.toMap(Release::getId, Function.identity()));
+
+        final Set<Long> artistIds = releaseMap.values().stream()
+                .map(Release::getArtistId)
+                .collect(Collectors.toSet());
+
+        final Map<Long, Artist> artistMap = artistRepository.findAllById(artistIds).stream()
+                .collect(Collectors.toMap(Artist::getId, Function.identity()));
+
+        final List<UserReviewResponse> content = pageResult.getContent().stream()
+                .map(review -> {
+                    final Release release = releaseMap.get(review.getReleaseId());
+                    final String releaseTitle = release != null ? release.getTitle() : "Unknown Release";
+                    final Artist artist = release != null ? artistMap.get(release.getArtistId()) : null;
+                    final String artistName = artist != null ? artist.getName() : "Unknown Artist";
+
+                    return new UserReviewResponse(
+                            review.getId(),
+                            review.getReleaseId(),
+                            releaseTitle,
+                            artistName,
+                            review.getContent(),
+                            review.getCreatedAt(),
+                            review.getUpdatedAt()
+                    );
+                })
+                .toList();
+
+        final PaginationDto pagination = new PaginationDto(page, limit, pageResult.getTotalElements(), pageResult.getTotalPages());
+
+        return new PagedResponse<>(content, pagination);
     }
 
     private Review findActiveReviewOrThrow(final Long reviewId) {

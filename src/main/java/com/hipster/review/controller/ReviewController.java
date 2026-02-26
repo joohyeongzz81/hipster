@@ -58,4 +58,12 @@ public class ReviewController {
         reviewService.deleteReview(id, user.userId());
         return ResponseEntity.ok(ApiResponse.of(200, "리뷰가 삭제되었습니다.", null));
     }
+
+    @GetMapping("/api/v1/users/{userId}/reviews")
+    public ResponseEntity<ApiResponse<PagedResponse<com.hipster.review.dto.response.UserReviewResponse>>> getUserReviews(
+            @PathVariable final Long userId,
+            @RequestParam(defaultValue = "1") final int page,
+            @RequestParam(defaultValue = "20") final int limit) {
+        return ResponseEntity.ok(ApiResponse.ok(reviewService.getUserReviews(userId, page, limit)));
+    }
 }

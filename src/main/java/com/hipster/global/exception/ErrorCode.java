@@ -36,6 +36,7 @@ public enum ErrorCode {
     USERNAME_ALREADY_EXISTS(4002, HttpStatus.CONFLICT, "이미 사용중인 사용자 이름입니다."),
     REFRESH_TOKEN_NOT_FOUND(4003, HttpStatus.NOT_FOUND, "리프레시 토큰을 찾을 수 없습니다."),
     RELEASE_NOT_FOUND(4004, HttpStatus.NOT_FOUND, "앨범을 찾을 수 없습니다."),
+    TARGET_USER_NOT_FOUND(4005, HttpStatus.NOT_FOUND, "조회 대상 사용자를 찾을 수 없습니다."),
     ALREADY_UNDER_REVIEW(4009, HttpStatus.CONFLICT, "이미 다른 모더레이터가 검토 중입니다."),
 
     // 5xxx: Chart Domain Custom Errors
