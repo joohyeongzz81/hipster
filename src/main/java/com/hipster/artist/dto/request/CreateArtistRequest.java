@@ -1,5 +1,7 @@
 package com.hipster.artist.dto.request;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -11,6 +13,8 @@ public record CreateArtistRequest(
         @Size(max = 5000, message = "Description must be less than 5000 characters")
         String description,
 
+        @Min(value = 1, message = "Formed year must be larger than 0")
+        @Max(value = 2026, message = "Formed year cannot be in the future")
         Integer formedYear,
 
         @Size(max = 100, message = "Country must be less than 100 characters")

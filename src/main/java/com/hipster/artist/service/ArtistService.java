@@ -7,6 +7,7 @@ import com.hipster.artist.dto.request.CreateArtistRequest;
 import com.hipster.artist.repository.ArtistRepository;
 import com.hipster.global.dto.response.PagedResponse;
 import com.hipster.global.dto.response.PaginationDto;
+import com.hipster.global.exception.BadRequestException;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.NotFoundException;
 import com.hipster.moderation.domain.EntityType;
@@ -49,6 +50,9 @@ public class ArtistService {
     }
 
     public PagedResponse<ArtistResponse> searchArtists(final String query, final int page, final int limit) {
+        if (limit < 1 || limit > 100) {
+            throw new BadRequestException(ErrorCode.INVALID_PAGE_LIMIT);
+        }
         final Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit);
         final Page<Artist> pageResult = artistRepository.findByNameContainingIgnoreCaseAndStatus(query,
                 ArtistStatus.ACTIVE, pageable);

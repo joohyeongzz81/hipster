@@ -14,6 +14,7 @@ public enum ErrorCode {
     NOT_FOUND(1003, HttpStatus.NOT_FOUND, "리소스를 찾을 수 없습니다."),
     CONFLICT(1004, HttpStatus.CONFLICT, "충돌이 발생했습니다."),
     TOO_MANY_REQUESTS(1005, HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다."),
+    INVALID_PAGE_LIMIT(1006, HttpStatus.BAD_REQUEST, "페이지 크기는 1 이상 100 이하여야 합니다."),
     INTERNAL_SERVER_ERROR(1999, HttpStatus.INTERNAL_SERVER_ERROR, "내부 서버 오류입니다."),
 
     // 2xxx: Auth Domain Custom Errors
@@ -29,6 +30,7 @@ public enum ErrorCode {
 
     // 3xxx: Artist Domain Custom Errors
     ARTIST_NOT_FOUND(3000, HttpStatus.NOT_FOUND, "아티스트를 찾을 수 없습니다."),
+    ARTIST_ALREADY_DELETED(3001, HttpStatus.BAD_REQUEST, "이미 삭제된 아티스트입니다."),
 
     // 4xxx: User & Token Domain Custom Errors
     USER_NOT_FOUND(4000, HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),

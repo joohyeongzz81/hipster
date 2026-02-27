@@ -3,7 +3,9 @@ package com.hipster.artist.controller;
 import com.hipster.artist.dto.response.ArtistResponse;
 import com.hipster.artist.dto.request.CreateArtistRequest;
 import com.hipster.artist.service.ArtistService;
+import com.hipster.auth.UserRole;
 import com.hipster.auth.annotation.CurrentUser;
+import com.hipster.auth.annotation.RequireRole;
 import com.hipster.auth.dto.response.CurrentUserInfo;
 import com.hipster.global.dto.response.ApiResponse;
 import com.hipster.global.dto.response.PagedResponse;
@@ -44,6 +46,7 @@ public class ArtistController {
     }
 
     @DeleteMapping("/{id}")
+    @RequireRole(UserRole.ADMIN)
     public ResponseEntity<ApiResponse<Void>> deleteArtist(@PathVariable final Long id) {
         artistService.deleteArtist(id);
         return ResponseEntity.ok(ApiResponse.of(200, "아티스트가 삭제되었습니다.", null));

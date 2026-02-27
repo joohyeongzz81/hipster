@@ -1,6 +1,8 @@
 package com.hipster.artist.domain;
 
 import com.hipster.artist.dto.request.CreateArtistRequest;
+import com.hipster.global.exception.BadRequestException;
+import com.hipster.global.exception.ErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -66,10 +68,16 @@ public class Artist {
     }
 
     public void approve() {
+        if (this.status == ArtistStatus.DELETED) {
+            throw new BadRequestException(ErrorCode.ARTIST_ALREADY_DELETED);
+        }
         this.status = ArtistStatus.ACTIVE;
     }
 
     public void delete() {
+        if (this.status == ArtistStatus.DELETED) {
+            throw new BadRequestException(ErrorCode.ARTIST_ALREADY_DELETED);
+        }
         this.status = ArtistStatus.DELETED;
     }
 }
