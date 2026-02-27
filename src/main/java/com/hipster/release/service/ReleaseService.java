@@ -27,20 +27,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
-import com.hipster.rating.domain.Rating;
-import com.hipster.rating.repository.RatingRepository;
+import com.hipster.rating.domain.ReleaseRatingSummary;
+import com.hipster.rating.repository.ReleaseRatingSummaryRepository;
 import com.hipster.release.domain.ReleaseStatus;
-import com.hipster.user.domain.User;
-import com.hipster.user.repository.UserRepository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -51,8 +45,7 @@ public class ReleaseService {
     private final ModerationQueueService moderationQueueService;
     private final ArtistRepository artistRepository;
     private final TrackService trackService;
-    private final RatingRepository ratingRepository;
-    private final UserRepository userRepository;
+    private final ReleaseRatingSummaryRepository releaseRatingSummaryRepository;
 
     @Transactional
     public ModerationSubmitResponse createRelease(final CreateReleaseRequest request, final Long submitterId) {
@@ -95,28 +88,9 @@ public class ReleaseService {
 
         final List<TrackResponse> tracks = trackService.getTracksByReleaseId(releaseId);
 
-        final List<Rating> ratings = ratingRepository.findByReleaseId(releaseId);
-
-        final Set<Long> userIds = ratings.stream()
-                .map(Rating::getUserId)
-                .collect(Collectors.toSet());
-        final Map<Long, User> userMap = userRepository.findAllById(userIds).stream()
-                .collect(Collectors.toMap(User::getId, Function.identity()));
-
-        double totalWeightedScore = 0.0;
-        double totalWeighting = 0.0;
-        int ratingCount = 0;
-
-        for (final Rating rating : ratings) {
-            final User user = userMap.get(rating.getUserId());
-            if (user != null && user.getWeightingScore() > 0) {
-                totalWeightedScore += rating.getWeightedScore();
-                totalWeighting += user.getWeightingScore();
-                ratingCount++;
-            }
-        }
-
-        final double averageRating = totalWeighting > 0 ? Math.round((totalWeightedScore / totalWeighting) * 100.0) / 100.0 : 0.0;
+        final ReleaseRatingSummary summary = releaseRatingSummaryRepository.findByReleaseId(releaseId).orElse(null);
+        final double averageRating = summary != null ? Math.round(summary.getAverageScore() * 100.0) / 100.0 : 0.0;
+        final int ratingCount = summary != null ? (int) summary.getTotalRatingCount() : 0;
 
         return new ReleaseDetailResponse(
                 release.getId(),

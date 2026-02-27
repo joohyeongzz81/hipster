@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(name = "ratings", indexes = {
         @Index(name = "idx_ratings_user_release", columnList = "userId, releaseId", unique = true),
-        @Index(name = "idx_ratings_release_weighted", columnList = "releaseId"),
+        @Index(name = "idx_ratings_release", columnList = "releaseId"),
         @Index(name = "idx_ratings_user_created", columnList = "userId, createdAt DESC")
 })
 public class Rating {
@@ -35,9 +35,6 @@ public class Rating {
     @Column(nullable = false)
     private Double score;
 
-    @Column(nullable = false)
-    private Double weightedScore;
-
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -47,16 +44,15 @@ public class Rating {
     private LocalDateTime updatedAt;
 
     @Builder
-    public Rating(final Long userId, final Long releaseId, final Double score, final Double userWeightingScore) {
+    public Rating(final Long userId, final Long releaseId, final Double score) {
         this.userId = userId;
         this.releaseId = releaseId;
-        this.updateScore(score, userWeightingScore);
+        this.updateScore(score);
     }
 
-    public void updateScore(final Double score, final Double userWeightingScore) {
+    public void updateScore(final Double score) {
         validateScore(score);
         this.score = score;
-        this.weightedScore = score * userWeightingScore;
     }
 
     private void validateScore(final Double score) {

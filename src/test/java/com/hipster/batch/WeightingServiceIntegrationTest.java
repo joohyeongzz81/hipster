@@ -170,7 +170,6 @@ class WeightingServiceIntegrationTest {
                         .userId(user.getId())
                         .releaseId((long) j)
                         .score(3.0)
-                        .userWeightingScore(0.0)
                         .build());
             }
         }

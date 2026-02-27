@@ -7,11 +7,13 @@ import com.hipster.global.dto.response.PaginationDto;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.NotFoundException;
 import com.hipster.rating.domain.Rating;
+import com.hipster.rating.domain.ReleaseRatingSummary;
 import com.hipster.rating.dto.request.CreateRatingRequest;
 import com.hipster.rating.dto.response.RatingResponse;
 import com.hipster.rating.dto.response.RatingResult;
 import com.hipster.rating.dto.response.UserRatingResponse;
 import com.hipster.rating.repository.RatingRepository;
+import com.hipster.rating.repository.ReleaseRatingSummaryRepository;
 import com.hipster.release.domain.Release;
 import com.hipster.release.domain.ReleaseStatus;
 import com.hipster.release.repository.ReleaseRepository;
@@ -40,6 +42,7 @@ public class RatingService {
     private final UserRepository userRepository;
     private final ReleaseRepository releaseRepository;
     private final ArtistRepository artistRepository;
+    private final ReleaseRatingSummaryRepository releaseRatingSummaryRepository;
 
     @Transactional
     public RatingResult createOrUpdateRating(final Long releaseId, final CreateRatingRequest request, final Long userId) {
@@ -55,20 +58,26 @@ public class RatingService {
 
         final Optional<Rating> existingRating = ratingRepository.findByUserIdAndReleaseId(userId, releaseId);
         final boolean isCreated = existingRating.isEmpty();
+        final double oldScore = existingRating.map(Rating::getScore).orElse(0.0);
 
         final Rating rating = existingRating.map(r -> {
-            r.updateScore(request.score(), user.getWeightingScore());
+            r.updateScore(request.score());
             return r;
         }).orElseGet(() -> Rating.builder()
                 .userId(userId)
                 .releaseId(releaseId)
                 .score(request.score())
-                .userWeightingScore(user.getWeightingScore())
                 .build());
 
         ratingRepository.save(rating);
 
         userRepository.updateLastActiveDate(userId, LocalDateTime.now());
+
+        if (isCreated) {
+            releaseRatingSummaryRepository.incrementRating(releaseId, request.score());
+        } else if (oldScore != request.score()) {
+            releaseRatingSummaryRepository.updateRatingScore(releaseId, oldScore, request.score());
+        }
 
         final RatingResponse response = RatingResponse.from(rating, user.getUsername());
         return new RatingResult(response, isCreated);

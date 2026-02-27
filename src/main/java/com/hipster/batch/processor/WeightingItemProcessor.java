@@ -1,6 +1,5 @@
 package com.hipster.batch.processor;
 
-import com.hipster.batch.WeightingService;
 import com.hipster.user.domain.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,13 +16,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class WeightingItemProcessor implements ItemProcessor<User, User> {
 
-    private final WeightingService weightingService;
-
     @Override
     public User process(final User user) {
-        final double newWeight = weightingService.calculateUserWeightingForBatch(user);
-        user.updateWeightingScore(newWeight);
-
+        // 단건 DB 병목을 제거하기 위해 로직을 ItemWriter(Bulk) 계층으로 이관함.
+        // 현재는 단순히 user를 통과(Pass-through)시킵니다.
         return user;
     }
 }
