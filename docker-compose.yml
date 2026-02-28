@@ -13,6 +13,14 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
 
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: hipster-rabbitmq
+    ports:
+      - "5672:5672"   # for app
+      - "15672:15672" # for management UI
+
   # 2. MySQL Exporter (DB 지표 수집용)
   mysqld-exporter:
     image: prom/mysqld-exporter:v0.14.0

@@ -7,26 +7,27 @@ import com.hipster.global.dto.response.PaginationDto;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.NotFoundException;
 import com.hipster.rating.domain.Rating;
-import com.hipster.rating.domain.ReleaseRatingSummary;
+
 import com.hipster.rating.dto.request.CreateRatingRequest;
 import com.hipster.rating.dto.response.RatingResponse;
 import com.hipster.rating.dto.response.RatingResult;
 import com.hipster.rating.dto.response.UserRatingResponse;
-import com.hipster.rating.repository.RatingRepository;
-import com.hipster.rating.repository.ReleaseRatingSummaryRepository;
+import com.hipster.rating.event.RatingEvent;
 import com.hipster.release.domain.Release;
 import com.hipster.release.domain.ReleaseStatus;
+import com.hipster.rating.repository.RatingRepository;
 import com.hipster.release.repository.ReleaseRepository;
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,7 +43,7 @@ public class RatingService {
     private final UserRepository userRepository;
     private final ReleaseRepository releaseRepository;
     private final ArtistRepository artistRepository;
-    private final ReleaseRatingSummaryRepository releaseRatingSummaryRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public RatingResult createOrUpdateRating(final Long releaseId, final CreateRatingRequest request, final Long userId) {
@@ -71,12 +72,9 @@ public class RatingService {
 
         ratingRepository.save(rating);
 
-        userRepository.updateLastActiveDate(userId, LocalDateTime.now());
-
-        if (isCreated) {
-            releaseRatingSummaryRepository.incrementRating(releaseId, request.score());
-        } else if (oldScore != request.score()) {
-            releaseRatingSummaryRepository.updateRatingScore(releaseId, oldScore, request.score());
+        // RabbitMQ Fanout 이벤트를 발행하여 통계 갱신 및 유저 활동일 갱신을 완벽히 격리 (AFTER_COMMIT 방어)
+        if (isCreated || oldScore != request.score()) {
+            eventPublisher.publishEvent(new RatingEvent(userId, releaseId, oldScore, request.score(), isCreated));
         }
 
         final RatingResponse response = RatingResponse.from(rating, user.getUsername());

@@ -6,11 +6,14 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.Optional;
 
 public interface ReleaseRatingSummaryRepository extends JpaRepository<ReleaseRatingSummary, Long> {
     Optional<ReleaseRatingSummary> findByReleaseId(Long releaseId);
 
+    @Transactional
     @Modifying
     @Query(value = "INSERT INTO release_rating_summary (release_id, total_rating_count, average_score, updated_at) " +
                    "VALUES (:releaseId, 1, :score, NOW()) " +
@@ -20,6 +23,7 @@ public interface ReleaseRatingSummaryRepository extends JpaRepository<ReleaseRat
                    "updated_at = NOW()", nativeQuery = true)
     void incrementRating(@Param("releaseId") Long releaseId, @Param("score") double score);
 
+    @Transactional
     @Modifying
     @Query(value = "UPDATE release_rating_summary SET " +
                    "average_score = ((average_score * total_rating_count) - :oldScore + :newScore) / total_rating_count, " +

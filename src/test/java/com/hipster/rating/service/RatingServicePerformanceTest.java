@@ -5,9 +5,8 @@ import com.hipster.rating.domain.ReleaseRatingSummary;
 import com.hipster.rating.repository.RatingRepository;
 import com.hipster.rating.repository.ReleaseRatingSummaryRepository;
 import com.hipster.release.domain.Release;
+import com.hipster.release.domain.ReleaseType;
 import com.hipster.release.repository.ReleaseRepository;
-import com.hipster.user.domain.User;
-import com.hipster.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,6 +21,7 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,7 +46,7 @@ class RatingServicePerformanceTest {
         registry.add("spring.datasource.username", mysql::getUsername);
         registry.add("spring.datasource.password", mysql::getPassword);
         registry.add("spring.flyway.enabled", () -> "false");
-        registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "update");
         registry.add("spring.batch.jdbc.initialize-schema", () -> "always");
     }
 
@@ -60,9 +60,6 @@ class RatingServicePerformanceTest {
     private RatingRepository ratingRepository;
 
     @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
     private ReleaseRepository releaseRepository;
 
     private Long testReleaseId;
@@ -70,22 +67,30 @@ class RatingServicePerformanceTest {
 
     @BeforeEach
     void setUp() {
-        jdbcTemplate.execute("DELETE FROM release_rating_summary");
-        jdbcTemplate.execute("DELETE FROM ratings");
-        jdbcTemplate.execute("DELETE FROM releases");
-        jdbcTemplate.execute("DELETE FROM users");
+        jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 0;");
+        jdbcTemplate.execute("TRUNCATE TABLE release_rating_summary;");
+        jdbcTemplate.execute("TRUNCATE TABLE ratings;");
+        jdbcTemplate.execute("TRUNCATE TABLE releases;");
+        jdbcTemplate.execute("TRUNCATE TABLE users;");
+        jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 1;");
 
-        // 1. 테스트 유저 생성
-        User user = User.builder()
-                .username("test_user")
-                .email("test@test.com")
-                .passwordHash("hash")
-                .build();
-        userRepository.save(user);
+        LocalDateTime now = LocalDateTime.now();
+
+        // 1. 테스트 유저 10,000명 대량 생성 (각기 다른 유저 ID로 평점 유니크 제약조건을 회피하기 위함)
+        log.info("Inserting {} dummy users...", DUMMY_RATING_COUNT);
+        String sqlUser = "INSERT INTO users (username, email, password_hash, weighting_score, review_bonus, last_active_date, created_at, updated_at) VALUES (?, ?, 'hash', 0.0, false, ?, ?, ?)";
+        List<Object[]> batchArgsUser = new ArrayList<>();
+        for (int i = 1; i <= DUMMY_RATING_COUNT; i++) {
+            batchArgsUser.add(new Object[]{"test_user_" + i, "test" + i + "@test.com", now, now, now});
+        }
+        jdbcTemplate.batchUpdate(sqlUser, batchArgsUser);
 
         // 2. 테스트 앨범(Release) 생성
         Release release = Release.builder()
                 .title("Test Release Performance")
+                .artistId(1L)
+                .releaseType(ReleaseType.ALBUM)
+                .releaseDate(LocalDate.now())
                 .build();
         release.approve(); // Set status to ACTIVE
         release = releaseRepository.save(release);
@@ -95,24 +100,29 @@ class RatingServicePerformanceTest {
         log.info("Inserting {} dummy ratings for performance test...", DUMMY_RATING_COUNT);
         String sqlRating = "INSERT INTO ratings (user_id, release_id, score, created_at, updated_at) VALUES (?, ?, ?, ?, ?)";
         List<Object[]> batchArgsRating = new ArrayList<>();
-        LocalDateTime now = LocalDateTime.now();
 
         double totalScore = 0;
-        for (int i = 0; i < DUMMY_RATING_COUNT; i++) {
+        for (int i = 1; i <= DUMMY_RATING_COUNT; i++) {
             double dummyScore = 4.0;
-            batchArgsRating.add(new Object[]{user.getId(), testReleaseId, dummyScore, now, now});
+            // 각기 다른 유저 아이디(1 ~ 10000)가 평가한 것으로 매핑하여 Unique 제약조건 우회
+            batchArgsRating.add(new Object[]{(long) i, testReleaseId, dummyScore, now, now});
             totalScore += dummyScore;
         }
         jdbcTemplate.batchUpdate(sqlRating, batchArgsRating);
 
         // 4. (TO-BE 용) Summary 데이터 1건 생성
-        releaseRatingSummaryRepository.save(
-                ReleaseRatingSummary.builder()
-                        .releaseId(testReleaseId)
-                        .totalRatingCount(DUMMY_RATING_COUNT)
-                        .averageScore(totalScore / DUMMY_RATING_COUNT)
-                        .build()
+        ReleaseRatingSummary summary = ReleaseRatingSummary.builder()
+                .releaseId(testReleaseId)
+                .build();
+        summary.recalculate(
+                DUMMY_RATING_COUNT,
+                totalScore / DUMMY_RATING_COUNT,
+                java.math.BigDecimal.ZERO,
+                java.math.BigDecimal.ZERO,
+                java.math.BigDecimal.ZERO,
+                java.math.BigDecimal.ZERO
         );
+        releaseRatingSummaryRepository.save(summary);
         log.info("Setup complete.");
     }
 

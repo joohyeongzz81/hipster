@@ -57,11 +57,10 @@ class RatingServiceTest {
         Long userId = 1L;
         Long releaseId = 100L;
         Long artistId = 200L;
-        Double userWeightingScore = 1.0;
 
         given(userRepository.existsById(userId)).willReturn(true);
 
-        Rating rating = Rating.builder().userId(userId).releaseId(releaseId).score(4.5).userWeightingScore(userWeightingScore).build();
+        Rating rating = Rating.builder().userId(userId).releaseId(releaseId).score(4.5).build();
         Page<Rating> ratingPage = new PageImpl<>(List.of(rating));
         given(ratingRepository.findByUserIdOrderByCreatedAtDesc(eq(userId), any(Pageable.class)))
                 .willReturn(ratingPage);
