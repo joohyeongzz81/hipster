@@ -74,11 +74,25 @@ public class RatingService {
 
         // RabbitMQ Fanout 이벤트를 발행하여 통계 갱신 및 유저 활동일 갱신을 완벽히 격리 (AFTER_COMMIT 방어)
         if (isCreated || oldScore != request.score()) {
-            eventPublisher.publishEvent(new RatingEvent(userId, releaseId, oldScore, request.score(), isCreated));
+            eventPublisher.publishEvent(new RatingEvent(userId, releaseId, oldScore, request.score(), isCreated, false, user.getWeightingScore()));
         }
 
         final RatingResponse response = RatingResponse.from(rating, user.getUsername());
         return new RatingResult(response, isCreated);
+    }
+
+    @Transactional
+    public void deleteRating(final Long releaseId, final Long userId) {
+        final Rating rating = ratingRepository.findByUserIdAndReleaseId(userId, releaseId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.RATING_NOT_FOUND));
+
+        final User user = userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
+
+        ratingRepository.delete(rating);
+
+        // RabbitMQ Fanout 이벤트 발행 (삭제 이벤트)
+        eventPublisher.publishEvent(new RatingEvent(userId, releaseId, rating.getScore(), 0.0, false, true, user.getWeightingScore()));
     }
 
     @Transactional(readOnly = true)

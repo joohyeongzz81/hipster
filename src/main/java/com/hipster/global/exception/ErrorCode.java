@@ -52,6 +52,7 @@ public enum ErrorCode {
 
     // 7xxx: Rating Domain Custom Errors
     INVALID_RATING_SCORE(7000, HttpStatus.BAD_REQUEST, "점수는 0.5~5.0 범위의 0.5 단위여야 합니다."),
+    RATING_NOT_FOUND(7001, HttpStatus.NOT_FOUND, "평점을 찾을 수 없습니다."),
 
     // 8xxx: Review Domain Custom Errors
     REVIEW_NOT_FOUND(8000, HttpStatus.NOT_FOUND, "리뷰를 찾을 수 없습니다."),

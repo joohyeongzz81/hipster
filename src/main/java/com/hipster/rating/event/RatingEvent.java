@@ -5,6 +5,8 @@ public record RatingEvent(
         Long releaseId,
         double oldScore,
         double newScore,
-        boolean isCreated
+        boolean isCreated,
+        boolean isDeleted,
+        double weightingScore
 ) {
 }

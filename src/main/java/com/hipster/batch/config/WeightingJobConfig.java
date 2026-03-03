@@ -1,5 +1,6 @@
 package com.hipster.batch.config;
 
+import com.hipster.batch.RatingSummaryReconciliationTasklet;
 import com.hipster.batch.processor.WeightingItemProcessor;
 import com.hipster.batch.reader.WeightingItemReaderConfig;
 import com.hipster.batch.writer.WeightingItemWriter;
@@ -18,6 +19,7 @@ import org.springframework.batch.item.data.RepositoryItemReader;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
 
 @Slf4j
 @Configuration
@@ -29,11 +31,14 @@ public class WeightingJobConfig {
     private final WeightingItemReaderConfig readerConfig;
     private final WeightingItemProcessor processor;
     private final WeightingItemWriter writer;
+    private final RatingSummaryReconciliationTasklet reconciliationTasklet;
+    private final PlatformTransactionManager transactionManager;
 
     @Bean
     public Job weightingRecalculationJob() {
         return new JobBuilder("weightingRecalculationJob", jobRepository)
                 .start(weightingStep())
+                .next(reconciliationStep())   // Step 1 완료 후 타겟 재집계 실행
                 .build();
     }
 
@@ -45,6 +50,17 @@ public class WeightingJobConfig {
                 .processor(processor)
                 .writer(writer)
                 .listener(entityManagerClearListener())
+                .build();
+    }
+
+    /**
+     * 가중치 변경 유저 감지 → 영향 앨범 타겟 재집계 Step.
+     * weightingStep과 트랜잭션 경계가 분리되어 독립적으로 실패/재시도 가능.
+     */
+    @Bean
+    public Step reconciliationStep() {
+        return new StepBuilder("reconciliationStep", jobRepository)
+                .tasklet(reconciliationTasklet, transactionManager)
                 .build();
     }
 

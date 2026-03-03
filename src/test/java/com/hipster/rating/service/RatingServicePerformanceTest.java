@@ -175,7 +175,13 @@ class RatingServicePerformanceTest {
         long tobeStart = System.currentTimeMillis();
         jdbcTemplate.update("INSERT INTO ratings (user_id, release_id, score, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())",
                 newUserId + 1, testReleaseId, newScore);
-        releaseRatingSummaryRepository.incrementRating(testReleaseId, newScore); // Delta DB Update
+        releaseRatingSummaryRepository.incrementRating(
+                testReleaseId,
+                java.math.BigDecimal.valueOf(newScore),
+                java.math.BigDecimal.valueOf(1.0),
+                java.math.BigDecimal.valueOf(3.5),
+                java.math.BigDecimal.valueOf(5.0)
+        ); // Delta DB Update
         long tobeEnd = System.currentTimeMillis();
         long tobeLatency = tobeEnd - tobeStart;
 

@@ -1,12 +1,13 @@
 package com.hipster.rating.event;
 
 import com.hipster.global.config.RabbitMqConfig;
-import com.hipster.rating.repository.ReleaseRatingSummaryRepository;
+import com.hipster.rating.service.RatingSummaryService;
 import com.rabbitmq.client.Channel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.support.AmqpHeaders;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
@@ -17,7 +18,7 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class RatingSummaryConsumer {
 
-    private final ReleaseRatingSummaryRepository releaseRatingSummaryRepository;
+    private final RatingSummaryService ratingSummaryService;
 
     @RabbitListener(
             id = "ratingSummaryListener",
@@ -31,17 +32,18 @@ public class RatingSummaryConsumer {
     ) throws IOException {
         try {
             log.info("Consumer [RatingSummary]: Processing releaseId={}", event.releaseId());
-            if (event.isCreated()) {
-                releaseRatingSummaryRepository.incrementRating(event.releaseId(), event.newScore());
-            } else if (event.oldScore() != event.newScore()) {
-                releaseRatingSummaryRepository.updateRatingScore(event.releaseId(), event.oldScore(), event.newScore());
-            }
-            // 정상 처리 완료 시 RabbitMQ 브로커에 메시지 삭제 요청 (ACK)
+            ratingSummaryService.applyRatingEvent(event);
             channel.basicAck(deliveryTag, false);
             log.info("Consumer [RatingSummary]: Successfully ACKed deliveryTag={}", deliveryTag);
+
+        } catch (IllegalArgumentException | IllegalStateException | DataIntegrityViolationException e) {
+            // [영구 실패] 데이터 자체의 오류 - 재처리해도 동일하게 실패하므로 DLQ로 라우팅 (Poison Pill 방어)
+            log.error("Consumer [RatingSummary]: Permanent failure. Discarding message to DLQ. deliveryTag={}, error={}", deliveryTag, e.getMessage());
+            channel.basicNack(deliveryTag, false, false);
+
         } catch (Exception e) {
-            log.error("Consumer [RatingSummary]: Exception occurred. NACK and Requeue! Error: {}", e.getMessage());
-            // 예외 발생 시 NACK 전송 -> requeue=true로 설정하여 브로커가 메시지를 버리지 않고 다시 큐에 보관 (장애 대응 및 영속성)
+            // [일시적 장애] DB 커넥션 오류 등 - 재처리 시 회복 가능성이 있으므로 큐에 반환 (requeue)
+            log.error("Consumer [RatingSummary]: Transient failure. Requeueing message. deliveryTag={}, error={}", deliveryTag, e.getMessage());
             channel.basicNack(deliveryTag, false, true);
         }
     }

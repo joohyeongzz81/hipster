@@ -57,9 +57,9 @@ public class ReleaseRatingSummary {
         this.bayesianScore = BigDecimal.ZERO;
     }
 
-    public void applyDelta(BigDecimal scoreDelta, BigDecimal credibility, long countDelta, BigDecimal m, BigDecimal C) {
-        this.weightedScoreSum = this.weightedScoreSum.add(scoreDelta.multiply(credibility));
-        this.weightedCountSum = this.weightedCountSum.add(credibility);
+    public void applyDelta(BigDecimal scoreDelta, BigDecimal weightingScore, long countDelta, BigDecimal m, BigDecimal C) {
+        this.weightedScoreSum = this.weightedScoreSum.add(scoreDelta.multiply(weightingScore));
+        this.weightedCountSum = this.weightedCountSum.add(weightingScore);
         this.bayesianScore = calculateBayesian(m, C);
 
         double currentTotal = this.averageScore * this.totalRatingCount;

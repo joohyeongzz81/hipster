@@ -32,7 +32,11 @@ public class UserActivityConsumer {
     ) throws IOException {
         try {
             log.info("Consumer [UserActivity]: Processing userId={}", event.userId());
-            userRepository.updateLastActiveDate(event.userId(), LocalDateTime.now());
+            if (event.isDeleted()) {
+                log.info("Consumer [UserActivity]: Ignoring activity update for rating deletion");
+            } else {
+                userRepository.updateLastActiveDate(event.userId(), LocalDateTime.now());
+            }
             
             // 정상 처리 후 수동 ACK (메시지 증발 방지용)
             channel.basicAck(deliveryTag, false);
