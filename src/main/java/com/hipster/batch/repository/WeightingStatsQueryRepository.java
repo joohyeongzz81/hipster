@@ -1,6 +1,7 @@
 package com.hipster.batch.repository;
 
 import com.hipster.batch.dto.UserWeightingStatsDto;
+import com.hipster.rating.BayesianConstants;
 import com.hipster.user.domain.UserWeightStats;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -136,9 +137,9 @@ public class WeightingStatsQueryRepository {
             INSERT INTO release_rating_summary (release_id, weighted_score_sum, weighted_count_sum, bayesian_score, updated_at)
             SELECT
                 r.release_id,
-                SUM(r.score * u.weighting_score)                                                      AS weighted_score_sum,
-                SUM(u.weighting_score)                                                                AS weighted_count_sum,
-                (5.0 * 3.5 + SUM(r.score * u.weighting_score)) / (5.0 + SUM(u.weighting_score))     AS bayesian_score,
+                SUM(r.score * u.weighting_score)                                                  AS weighted_score_sum,
+                SUM(u.weighting_score)                                                            AS weighted_count_sum,
+                (:c * :m + SUM(r.score * u.weighting_score)) / (:c + SUM(u.weighting_score))     AS bayesian_score,
                 NOW()
             FROM ratings r
             JOIN users u ON r.user_id = u.id
@@ -157,6 +158,8 @@ public class WeightingStatsQueryRepository {
 
         MapSqlParameterSource params = new MapSqlParameterSource();
         params.addValue("userIds", userIds);
+        params.addValue("m", BayesianConstants.M);
+        params.addValue("c", BayesianConstants.C);
         namedParameterJdbcTemplate.update(sql, params);
     }
 }

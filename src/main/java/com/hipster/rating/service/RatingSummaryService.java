@@ -1,5 +1,6 @@
 package com.hipster.rating.service;
 
+import com.hipster.rating.BayesianConstants;
 import com.hipster.rating.event.RatingEvent;
 import com.hipster.rating.repository.ReleaseRatingSummaryRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,10 +14,6 @@ import java.math.BigDecimal;
 @Service
 @RequiredArgsConstructor
 public class RatingSummaryService {
-
-    // 베이지안 평균 상수 (한 번만 선언하여 객체 생성 낭비 방지)
-    private static final BigDecimal M = BigDecimal.valueOf(3.5); // 전체 모평균
-    private static final BigDecimal C = BigDecimal.valueOf(50); // 보정 계수 (Prior Weight)
 
     private final ReleaseRatingSummaryRepository releaseRatingSummaryRepository;
 
@@ -34,13 +31,13 @@ public class RatingSummaryService {
 
         if (event.isDeleted()) {
             log.debug("RatingSummaryService: DECREMENT releaseId={}", event.releaseId());
-            releaseRatingSummaryRepository.decrementRating(event.releaseId(), oldScore, weightingScore, M, C);
+            releaseRatingSummaryRepository.decrementRating(event.releaseId(), oldScore, weightingScore, BayesianConstants.M, BayesianConstants.C);
         } else if (event.isCreated()) {
             log.debug("RatingSummaryService: INCREMENT releaseId={}", event.releaseId());
-            releaseRatingSummaryRepository.incrementRating(event.releaseId(), score, weightingScore, M, C);
+            releaseRatingSummaryRepository.incrementRating(event.releaseId(), score, weightingScore, BayesianConstants.M, BayesianConstants.C);
         } else if (event.oldScore() != event.newScore()) {
             log.debug("RatingSummaryService: UPDATE releaseId={}", event.releaseId());
-            releaseRatingSummaryRepository.updateRatingScore(event.releaseId(), oldScore, score, weightingScore, M, C);
+            releaseRatingSummaryRepository.updateRatingScore(event.releaseId(), oldScore, score, weightingScore, BayesianConstants.M, BayesianConstants.C);
         } else {
             log.debug("RatingSummaryService: No change detected for releaseId={}, skipping.", event.releaseId());
         }
