@@ -1,7 +1,6 @@
 package com.hipster.batch.repository;
 
 import com.hipster.batch.dto.UserWeightingStatsDto;
-import com.hipster.rating.BayesianConstants;
 import com.hipster.user.domain.UserWeightStats;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -98,68 +97,5 @@ public class WeightingStatsQueryRepository {
                 ps.setNull(6, java.sql.Types.TIMESTAMP);
             }
         });
-    }
-
-    /**
-     * users와 user_weight_stats를 비교하여 가중치가 실제로 변경된 유저 ID 목록을 반환.
-     * user_weight_stats는 배치 직전 스냅샷이므로 diff 감지에 사용 가능.
-     */
-    public List<Long> findChangedUserIds() {
-        String sql = """
-            SELECT u.id
-            FROM users u
-            JOIN user_weight_stats ws ON u.id = ws.user_id
-            WHERE u.weighting_score <> ws.weighting_score
-            """;
-        return jdbcTemplate.queryForList(sql, Long.class);
-    }
-
-    /**
-     * 변경된 유저들이 평점을 남긴 앨범만 타겟으로 release_rating_summary를 최신 weightingScore 기준으로 재집계.
-     * ratings 테이블은 읽기 전용(Source of Truth)으로만 사용.
-     * IN 절 폭발 방지를 위해 1000건 단위로 파티셔닝하여 처리.
-     */
-    public void reconcileAffectedReleases(final List<Long> changedUserIds) {
-        if (changedUserIds == null || changedUserIds.isEmpty()) {
-            return;
-        }
-
-        // IN 절 폭발 방지: 1000건 단위 파티셔닝
-        final int partitionSize = 1000;
-        for (int i = 0; i < changedUserIds.size(); i += partitionSize) {
-            final List<Long> partition = changedUserIds.subList(i, Math.min(i + partitionSize, changedUserIds.size()));
-            reconcilePartition(partition);
-        }
-    }
-
-    private void reconcilePartition(final List<Long> userIds) {
-        String sql = """
-            INSERT INTO release_rating_summary (release_id, weighted_score_sum, weighted_count_sum, bayesian_score, updated_at)
-            SELECT
-                r.release_id,
-                SUM(r.score * u.weighting_score)                                                  AS weighted_score_sum,
-                SUM(u.weighting_score)                                                            AS weighted_count_sum,
-                (:c * :m + SUM(r.score * u.weighting_score)) / (:c + SUM(u.weighting_score))     AS bayesian_score,
-                NOW()
-            FROM ratings r
-            JOIN users u ON r.user_id = u.id
-            WHERE r.release_id IN (
-                SELECT DISTINCT release_id
-                FROM ratings
-                WHERE user_id IN (:userIds)
-            )
-            GROUP BY r.release_id
-            ON DUPLICATE KEY UPDATE
-                weighted_score_sum = VALUES(weighted_score_sum),
-                weighted_count_sum = VALUES(weighted_count_sum),
-                bayesian_score     = VALUES(bayesian_score),
-                updated_at         = VALUES(updated_at)
-            """;
-
-        MapSqlParameterSource params = new MapSqlParameterSource();
-        params.addValue("userIds", userIds);
-        params.addValue("m", BayesianConstants.M);
-        params.addValue("c", BayesianConstants.C);
-        namedParameterJdbcTemplate.update(sql, params);
     }
 }

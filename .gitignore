@@ -40,3 +40,4 @@ out/
 docs/
 /.agents
 /.gemini
+.agent/workflows/never-run-tests.md

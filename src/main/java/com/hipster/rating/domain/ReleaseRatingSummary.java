@@ -47,6 +47,13 @@ public class ReleaseRatingSummary {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    /**
+     * Anti-Entropy Full 배치가 마지막으로 이 Row를 덮어쓴 시각.
+     * Consumer는 event_ts > batch_synced_at 인 이벤트만 증분 적용하여 Race Condition을 방어한다.
+     */
+    @Column(name = "batch_synced_at")
+    private LocalDateTime batchSyncedAt;
+
     @Builder
     public ReleaseRatingSummary(Long releaseId) {
         this.releaseId = releaseId;

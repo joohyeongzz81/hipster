@@ -31,13 +31,13 @@ public class RatingSummaryService {
 
         if (event.isDeleted()) {
             log.debug("RatingSummaryService: DECREMENT releaseId={}", event.releaseId());
-            releaseRatingSummaryRepository.decrementRating(event.releaseId(), oldScore, weightingScore, BayesianConstants.M, BayesianConstants.C);
+            releaseRatingSummaryRepository.decrementRating(event.releaseId(), oldScore, weightingScore, BayesianConstants.M, BayesianConstants.C, event.eventTs());
         } else if (event.isCreated()) {
             log.debug("RatingSummaryService: INCREMENT releaseId={}", event.releaseId());
-            releaseRatingSummaryRepository.incrementRating(event.releaseId(), score, weightingScore, BayesianConstants.M, BayesianConstants.C);
+            releaseRatingSummaryRepository.incrementRating(event.releaseId(), score, weightingScore, BayesianConstants.M, BayesianConstants.C, event.eventTs());
         } else if (event.oldScore() != event.newScore()) {
             log.debug("RatingSummaryService: UPDATE releaseId={}", event.releaseId());
-            releaseRatingSummaryRepository.updateRatingScore(event.releaseId(), oldScore, score, weightingScore, BayesianConstants.M, BayesianConstants.C);
+            releaseRatingSummaryRepository.updateRatingScore(event.releaseId(), oldScore, score, weightingScore, BayesianConstants.M, BayesianConstants.C, event.eventTs());
         } else {
             log.debug("RatingSummaryService: No change detected for releaseId={}, skipping.", event.releaseId());
         }

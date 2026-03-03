@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 public interface ReleaseRatingSummaryRepository extends JpaRepository<ReleaseRatingSummary, Long> {
@@ -25,15 +26,16 @@ public interface ReleaseRatingSummaryRepository extends JpaRepository<ReleaseRat
     @Query(value = "INSERT INTO release_rating_summary (release_id, weighted_score_sum, weighted_count_sum, bayesian_score, updated_at) " +
                    "VALUES (:releaseId, (:score * :weightingScore), :weightingScore, (:c * :m + (:score * :weightingScore)) / (:c + :weightingScore), NOW()) " +
                    "ON DUPLICATE KEY UPDATE " +
-                   "bayesian_score = (:c * :m + (weighted_score_sum + (:score * :weightingScore))) / (:c + (weighted_count_sum + :weightingScore)), " +
-                   "weighted_score_sum = weighted_score_sum + (:score * :weightingScore), " +
-                   "weighted_count_sum = weighted_count_sum + :weightingScore, " +
-                   "updated_at = NOW()", nativeQuery = true)
-    void incrementRating(@Param("releaseId") Long releaseId, 
-                         @Param("score") BigDecimal score, 
-                         @Param("weightingScore") BigDecimal weightingScore, 
-                         @Param("m") BigDecimal m, 
-                         @Param("c") BigDecimal c);
+                   "bayesian_score = IF(:eventTs > batch_synced_at OR batch_synced_at IS NULL, (:c * :m + (weighted_score_sum + (:score * :weightingScore))) / (:c + (weighted_count_sum + :weightingScore)), bayesian_score), " +
+                   "weighted_score_sum = IF(:eventTs > batch_synced_at OR batch_synced_at IS NULL, weighted_score_sum + (:score * :weightingScore), weighted_score_sum), " +
+                   "weighted_count_sum = IF(:eventTs > batch_synced_at OR batch_synced_at IS NULL, weighted_count_sum + :weightingScore, weighted_count_sum), " +
+                   "updated_at = IF(:eventTs > batch_synced_at OR batch_synced_at IS NULL, NOW(), updated_at)", nativeQuery = true)
+    void incrementRating(@Param("releaseId") Long releaseId,
+                         @Param("score") BigDecimal score,
+                         @Param("weightingScore") BigDecimal weightingScore,
+                         @Param("m") BigDecimal m,
+                         @Param("c") BigDecimal c,
+                         @Param("eventTs") LocalDateTime eventTs);
 
     /**
      * 평점 점수 수정
@@ -46,13 +48,15 @@ public interface ReleaseRatingSummaryRepository extends JpaRepository<ReleaseRat
                    "bayesian_score = (:c * :m + weighted_score_sum - (:oldScore * :weightingScore) + (:newScore * :weightingScore)) / (:c + weighted_count_sum), " +
                    "weighted_score_sum = weighted_score_sum - (:oldScore * :weightingScore) + (:newScore * :weightingScore), " +
                    "updated_at = NOW() " +
-                   "WHERE release_id = :releaseId", nativeQuery = true)
-    void updateRatingScore(@Param("releaseId") Long releaseId, 
-                           @Param("oldScore") BigDecimal oldScore, 
-                           @Param("newScore") BigDecimal newScore, 
-                           @Param("weightingScore") BigDecimal weightingScore, 
-                           @Param("m") BigDecimal m, 
-                           @Param("c") BigDecimal c);
+                   "WHERE release_id = :releaseId " +
+                   "AND (:eventTs > batch_synced_at OR batch_synced_at IS NULL)", nativeQuery = true)
+    void updateRatingScore(@Param("releaseId") Long releaseId,
+                           @Param("oldScore") BigDecimal oldScore,
+                           @Param("newScore") BigDecimal newScore,
+                           @Param("weightingScore") BigDecimal weightingScore,
+                           @Param("m") BigDecimal m,
+                           @Param("c") BigDecimal c,
+                           @Param("eventTs") LocalDateTime eventTs);
 
     /**
      * 평점 취소 (삭제)
@@ -66,10 +70,12 @@ public interface ReleaseRatingSummaryRepository extends JpaRepository<ReleaseRat
                    "weighted_score_sum = weighted_score_sum - (:oldScore * :weightingScore), " +
                    "weighted_count_sum = weighted_count_sum - :weightingScore, " +
                    "updated_at = NOW() " +
-                   "WHERE release_id = :releaseId", nativeQuery = true)
-    void decrementRating(@Param("releaseId") Long releaseId, 
-                         @Param("oldScore") BigDecimal oldScore, 
-                         @Param("weightingScore") BigDecimal weightingScore, 
-                         @Param("m") BigDecimal m, 
-                         @Param("c") BigDecimal c);
+                   "WHERE release_id = :releaseId " +
+                   "AND (:eventTs > batch_synced_at OR batch_synced_at IS NULL)", nativeQuery = true)
+    void decrementRating(@Param("releaseId") Long releaseId,
+                         @Param("oldScore") BigDecimal oldScore,
+                         @Param("weightingScore") BigDecimal weightingScore,
+                         @Param("m") BigDecimal m,
+                         @Param("c") BigDecimal c,
+                         @Param("eventTs") LocalDateTime eventTs);
 }
