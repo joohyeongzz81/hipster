@@ -1,4 +1,4 @@
-package com.hipster.batch.dto;
+package com.hipster.batch.weighting.dto;
 
 import java.time.LocalDateTime;
 
@@ -21,3 +21,4 @@ public record UserWeightingStatsDto(
         return lastActive;
     }
 }
+

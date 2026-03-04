@@ -1,4 +1,4 @@
-package com.hipster.batch.reader;
+package com.hipster.batch.weighting.step;
 
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
@@ -28,3 +28,4 @@ public class WeightingItemReaderConfig {
                 .build();
     }
 }
+

@@ -1,4 +1,4 @@
-package com.hipster.batch.processor;
+package com.hipster.batch.weighting.step;
 
 import com.hipster.user.domain.User;
 import lombok.RequiredArgsConstructor;
@@ -23,3 +23,4 @@ public class WeightingItemProcessor implements ItemProcessor<User, User> {
         return user;
     }
 }
+

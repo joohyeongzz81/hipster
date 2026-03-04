@@ -1,6 +1,6 @@
-package com.hipster.batch.calculator;
+package com.hipster.batch.weighting.step;
 
-import com.hipster.batch.dto.UserWeightingStatsDto;
+import com.hipster.batch.weighting.dto.UserWeightingStatsDto;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -54,3 +54,4 @@ public class WeightingCalculator {
         return Math.min(0.25, bCount + bQuality);
     }
 }
+

@@ -9,7 +9,6 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 
 @Entity
@@ -40,8 +39,6 @@ public class ReleaseRatingSummary {
     @Column(name = "weighted_count_sum", nullable = false, precision = 19, scale = 4)
     private BigDecimal weightedCountSum = BigDecimal.ZERO;
 
-    @Column(name = "bayesian_score", nullable = false, precision = 19, scale = 10)
-    private BigDecimal bayesianScore = BigDecimal.ZERO;
 
     @LastModifiedDate
     @Column(name = "updated_at")
@@ -61,35 +58,21 @@ public class ReleaseRatingSummary {
         this.averageScore = 0.0;
         this.weightedScoreSum = BigDecimal.ZERO;
         this.weightedCountSum = BigDecimal.ZERO;
-        this.bayesianScore = BigDecimal.ZERO;
     }
 
-    public void applyDelta(BigDecimal scoreDelta, BigDecimal weightingScore, long countDelta, BigDecimal m, BigDecimal C) {
+    public void applyDelta(BigDecimal scoreDelta, BigDecimal weightingScore, long countDelta) {
         this.weightedScoreSum = this.weightedScoreSum.add(scoreDelta.multiply(weightingScore));
         this.weightedCountSum = this.weightedCountSum.add(weightingScore);
-        this.bayesianScore = calculateBayesian(m, C);
 
         double currentTotal = this.averageScore * this.totalRatingCount;
         this.totalRatingCount += countDelta;
         this.averageScore = this.totalRatingCount == 0 ? 0.0 : (currentTotal + scoreDelta.doubleValue()) / this.totalRatingCount;
     }
 
-    public void recalculate(long totalRatingCount, double averageScore, BigDecimal weightedScoreSum, BigDecimal weightedCountSum, BigDecimal m, BigDecimal C) {
+    public void recalculate(long totalRatingCount, double averageScore, BigDecimal weightedScoreSum, BigDecimal weightedCountSum) {
         this.totalRatingCount = totalRatingCount;
         this.averageScore = averageScore;
         this.weightedScoreSum = weightedScoreSum;
         this.weightedCountSum = weightedCountSum;
-        this.bayesianScore = calculateBayesian(m, C);
-    }
-
-    private BigDecimal calculateBayesian(BigDecimal m, BigDecimal C) {
-        if (this.weightedCountSum.compareTo(BigDecimal.ZERO) == 0) {
-            return BigDecimal.ZERO;
-        }
-
-        BigDecimal numerator = C.multiply(m).add(this.weightedScoreSum);
-        BigDecimal denominator = C.add(this.weightedCountSum);
-
-        return numerator.divide(denominator, 10, RoundingMode.HALF_UP);
     }
 }

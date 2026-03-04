@@ -1,6 +1,5 @@
-package com.hipster.batch.repository;
+package com.hipster.batch.antientropy;
 
-import com.hipster.rating.BayesianConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -46,14 +45,13 @@ public class AntiEntropyQueryRepository {
         String sql = """
             INSERT INTO release_rating_summary
                 (release_id, weighted_score_sum, weighted_count_sum,
-                 bayesian_score, total_rating_count, average_score, batch_synced_at)
+                 total_rating_count, average_score, batch_synced_at)
             SELECT
                 r.release_id,
-                SUM(r.score * u.weighting_score)                                               AS weighted_score_sum,
-                SUM(u.weighting_score)                                                         AS weighted_count_sum,
-                (:c * :m + SUM(r.score * u.weighting_score)) / (:c + SUM(u.weighting_score))  AS bayesian_score,
-                COUNT(*)                                                                       AS total_rating_count,
-                AVG(r.score)                                                                   AS average_score,
+                SUM(r.score * u.weighting_score)   AS weighted_score_sum,
+                SUM(u.weighting_score)              AS weighted_count_sum,
+                COUNT(*)                            AS total_rating_count,
+                AVG(r.score)                        AS average_score,
                 :batchSyncedAt
             FROM ratings r
             JOIN users u ON r.user_id = u.id
@@ -62,7 +60,6 @@ public class AntiEntropyQueryRepository {
             ON DUPLICATE KEY UPDATE
                 weighted_score_sum = VALUES(weighted_score_sum),
                 weighted_count_sum = VALUES(weighted_count_sum),
-                bayesian_score     = VALUES(bayesian_score),
                 total_rating_count = VALUES(total_rating_count),
                 average_score      = VALUES(average_score),
                 batch_synced_at    = VALUES(batch_synced_at)
@@ -70,8 +67,6 @@ public class AntiEntropyQueryRepository {
 
         MapSqlParameterSource params = new MapSqlParameterSource();
         params.addValue("releaseIds", releaseIds);
-        params.addValue("m", BayesianConstants.M);
-        params.addValue("c", BayesianConstants.C);
         params.addValue("batchSyncedAt", batchSyncedAt);
 
         namedParameterJdbcTemplate.update(sql, params);
@@ -88,3 +83,4 @@ public class AntiEntropyQueryRepository {
         return partitions;
     }
 }
+

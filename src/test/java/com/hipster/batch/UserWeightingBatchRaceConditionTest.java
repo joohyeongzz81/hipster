@@ -2,6 +2,7 @@ package com.hipster.batch;
 
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
+import com.hipster.batch.weighting.UserWeightingBatchJob;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

@@ -1,4 +1,4 @@
-package com.hipster.batch;
+package com.hipster.user.service;
 
 import com.hipster.user.domain.User;
 import com.hipster.user.domain.UserWeightStats;
@@ -10,7 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import com.hipster.batch.dto.UserWeightingStatsDto;
+import com.hipster.batch.weighting.dto.UserWeightingStatsDto;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryUsage;
@@ -21,7 +21,7 @@ import java.time.temporal.ChronoUnit;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class WeightingService {
+public class UserWeightingService {
 
     private static final int N_TARGET = 200;
     private static final double SIGMA_TARGET = 1.5;
@@ -147,3 +147,5 @@ public class WeightingService {
 
 
 }
+
+

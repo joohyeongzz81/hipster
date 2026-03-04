@@ -118,8 +118,6 @@ class RatingServicePerformanceTest {
                 DUMMY_RATING_COUNT,
                 totalScore / DUMMY_RATING_COUNT,
                 java.math.BigDecimal.ZERO,
-                java.math.BigDecimal.ZERO,
-                java.math.BigDecimal.ZERO,
                 java.math.BigDecimal.ZERO
         );
         releaseRatingSummaryRepository.save(summary);
@@ -179,8 +177,6 @@ class RatingServicePerformanceTest {
                 testReleaseId,
                 java.math.BigDecimal.valueOf(newScore),
                 java.math.BigDecimal.valueOf(1.0),
-                java.math.BigDecimal.valueOf(3.5),
-                java.math.BigDecimal.valueOf(5.0),
                 java.time.LocalDateTime.now()
         ); // Delta DB Update
         long tobeEnd = System.currentTimeMillis();

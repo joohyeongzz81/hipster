@@ -1,6 +1,6 @@
-package com.hipster.batch.repository;
+package com.hipster.batch.weighting.repository;
 
-import com.hipster.batch.dto.UserWeightingStatsDto;
+import com.hipster.batch.weighting.dto.UserWeightingStatsDto;
 import com.hipster.user.domain.UserWeightStats;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -99,3 +99,4 @@ public class WeightingStatsQueryRepository {
         });
     }
 }
+

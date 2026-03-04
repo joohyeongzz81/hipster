@@ -1,6 +1,6 @@
-package com.hipster.batch;
+package com.hipster.batch.antientropy;
 
-import com.hipster.batch.repository.AntiEntropyQueryRepository;
+import com.hipster.batch.antientropy.AntiEntropyQueryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
@@ -56,3 +56,4 @@ public class AntiEntropyBatchJob {
         }
     }
 }
+

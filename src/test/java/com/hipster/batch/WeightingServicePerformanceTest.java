@@ -1,8 +1,8 @@
 package com.hipster.batch;
 
-import com.hipster.batch.calculator.WeightingCalculator;
-import com.hipster.batch.dto.UserWeightingStatsDto;
-import com.hipster.batch.repository.WeightingStatsQueryRepository;
+import com.hipster.batch.weighting.step.WeightingCalculator;
+import com.hipster.batch.weighting.dto.UserWeightingStatsDto;
+import com.hipster.batch.weighting.repository.WeightingStatsQueryRepository;
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,7 +50,7 @@ class WeightingServicePerformanceTest {
     }
 
     @Autowired
-    private WeightingService weightingService;
+    private com.hipster.user.service.UserWeightingService userWeightingService;
 
     @Autowired
     private WeightingStatsQueryRepository queryRepository;
@@ -121,7 +121,7 @@ class WeightingServicePerformanceTest {
 
         for (User user : targetUsers) {
             // N+1 쿼리 발생 지점
-            weightingService.calculateUserWeightingForBatch(user);
+            userWeightingService.calculateUserWeightingForBatch(user);
         }
 
         long asisMemoryAfter = getUsedHeapMemory();

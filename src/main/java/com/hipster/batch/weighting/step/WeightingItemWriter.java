@@ -1,8 +1,8 @@
-package com.hipster.batch.writer;
+package com.hipster.batch.weighting.step;
 
-import com.hipster.batch.calculator.WeightingCalculator;
-import com.hipster.batch.dto.UserWeightingStatsDto;
-import com.hipster.batch.repository.WeightingStatsQueryRepository;
+import com.hipster.batch.weighting.step.WeightingCalculator;
+import com.hipster.batch.weighting.dto.UserWeightingStatsDto;
+import com.hipster.batch.weighting.repository.WeightingStatsQueryRepository;
 
 import com.hipster.user.domain.User;
 import com.hipster.user.domain.UserWeightStats;
@@ -79,3 +79,4 @@ public class WeightingItemWriter implements ItemWriter<User> {
         log.info("[MEMORY] {} → Heap {}MB / 최대 {}MB", label, usedMB, maxMB);
     }
 }
+

@@ -1,6 +1,6 @@
 package com.hipster.batch.ui;
 
-import com.hipster.batch.WeightingService;
+import com.hipster.user.service.UserWeightingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.Job;
@@ -43,3 +43,5 @@ public class TestBatchController {
         return ResponseEntity.ok("Batch Triggered and Completed in " + duration + " ms.");
     }
 }
+
+

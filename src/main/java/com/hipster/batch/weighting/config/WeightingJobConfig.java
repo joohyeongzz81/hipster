@@ -1,8 +1,8 @@
-package com.hipster.batch.config;
+package com.hipster.batch.weighting.config;
 
-import com.hipster.batch.processor.WeightingItemProcessor;
-import com.hipster.batch.reader.WeightingItemReaderConfig;
-import com.hipster.batch.writer.WeightingItemWriter;
+import com.hipster.batch.weighting.step.WeightingItemProcessor;
+import com.hipster.batch.weighting.step.WeightingItemReaderConfig;
+import com.hipster.batch.weighting.step.WeightingItemWriter;
 import com.hipster.user.domain.User;
 import jakarta.persistence.EntityManagerFactory;
 import lombok.RequiredArgsConstructor;
@@ -65,3 +65,4 @@ public class WeightingJobConfig {
         };
     }
 }
+

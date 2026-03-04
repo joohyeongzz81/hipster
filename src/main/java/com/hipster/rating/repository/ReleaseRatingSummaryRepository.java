@@ -17,35 +17,27 @@ public interface ReleaseRatingSummaryRepository extends JpaRepository<ReleaseRat
 
     /**
      * 평점 신규 등록 (UPSERT)
-     * [경고] MySQL UPDATE 평가 순서 의존성 주의!
-     * bayesian_score 갱신 로직이 반드시 weighted_score_sum, weighted_count_sum 갱신보다 '먼저' 위치해야 합니다.
-     * 순서가 바뀌면 델타값이 이중으로 더해지는 치명적 버그가 발생합니다.
      */
     @Transactional
     @Modifying
-    @Query(value = "INSERT INTO release_rating_summary (release_id, weighted_score_sum, weighted_count_sum, bayesian_score, updated_at) " +
-                   "VALUES (:releaseId, (:score * :weightingScore), :weightingScore, (:c * :m + (:score * :weightingScore)) / (:c + :weightingScore), NOW()) " +
+    @Query(value = "INSERT INTO release_rating_summary (release_id, weighted_score_sum, weighted_count_sum, updated_at) " +
+                   "VALUES (:releaseId, (:score * :weightingScore), :weightingScore, NOW()) " +
                    "ON DUPLICATE KEY UPDATE " +
-                   "bayesian_score = IF(:eventTs > batch_synced_at OR batch_synced_at IS NULL, (:c * :m + (weighted_score_sum + (:score * :weightingScore))) / (:c + (weighted_count_sum + :weightingScore)), bayesian_score), " +
                    "weighted_score_sum = IF(:eventTs > batch_synced_at OR batch_synced_at IS NULL, weighted_score_sum + (:score * :weightingScore), weighted_score_sum), " +
                    "weighted_count_sum = IF(:eventTs > batch_synced_at OR batch_synced_at IS NULL, weighted_count_sum + :weightingScore, weighted_count_sum), " +
                    "updated_at = IF(:eventTs > batch_synced_at OR batch_synced_at IS NULL, NOW(), updated_at)", nativeQuery = true)
     void incrementRating(@Param("releaseId") Long releaseId,
                          @Param("score") BigDecimal score,
                          @Param("weightingScore") BigDecimal weightingScore,
-                         @Param("m") BigDecimal m,
-                         @Param("c") BigDecimal c,
                          @Param("eventTs") LocalDateTime eventTs);
 
     /**
      * 평점 점수 수정
      * 기존 가중합에서 (과거점수 * 현재신뢰도)를 빼고, (새점수 * 현재신뢰도)를 더합니다.
-     * count_sum은 변하지 않으므로 bayesian_score 계산 시 기존값을 그대로 사용합니다.
      */
     @Transactional
     @Modifying
     @Query(value = "UPDATE release_rating_summary SET " +
-                   "bayesian_score = (:c * :m + weighted_score_sum - (:oldScore * :weightingScore) + (:newScore * :weightingScore)) / (:c + weighted_count_sum), " +
                    "weighted_score_sum = weighted_score_sum - (:oldScore * :weightingScore) + (:newScore * :weightingScore), " +
                    "updated_at = NOW() " +
                    "WHERE release_id = :releaseId " +
@@ -54,19 +46,15 @@ public interface ReleaseRatingSummaryRepository extends JpaRepository<ReleaseRat
                            @Param("oldScore") BigDecimal oldScore,
                            @Param("newScore") BigDecimal newScore,
                            @Param("weightingScore") BigDecimal weightingScore,
-                           @Param("m") BigDecimal m,
-                           @Param("c") BigDecimal c,
                            @Param("eventTs") LocalDateTime eventTs);
 
     /**
      * 평점 취소 (삭제)
      * 기존 가중합과 가중수에서 취소된 유저의 지분을 완전히 빼냅니다.
-     * [방어 로직] 분모인 (C + weighted_count_sum)가 0이 되는 것은 상수 C(예: 100) 덕분에 발생하지 않습니다.
      */
     @Transactional
     @Modifying
     @Query(value = "UPDATE release_rating_summary SET " +
-                   "bayesian_score = (:c * :m + (weighted_score_sum - (:oldScore * :weightingScore))) / (:c + (weighted_count_sum - :weightingScore)), " +
                    "weighted_score_sum = weighted_score_sum - (:oldScore * :weightingScore), " +
                    "weighted_count_sum = weighted_count_sum - :weightingScore, " +
                    "updated_at = NOW() " +
@@ -75,7 +63,15 @@ public interface ReleaseRatingSummaryRepository extends JpaRepository<ReleaseRat
     void decrementRating(@Param("releaseId") Long releaseId,
                          @Param("oldScore") BigDecimal oldScore,
                          @Param("weightingScore") BigDecimal weightingScore,
-                         @Param("m") BigDecimal m,
-                         @Param("c") BigDecimal c,
                          @Param("eventTs") LocalDateTime eventTs);
+
+    /**
+     * 글로벌 가중 평균 C를 단일 쿼리로 산출한다.
+     * C = SUM(weighted_score_sum) / SUM(weighted_count_sum)
+     * 평점 데이터가 전혀 없으면 NULL이 반환될 수 있으므로 Optional로 감쌈.
+     * 배치 사이클 시작 시 1회 호출하여 전체 앨범에 동일한 C를 재사용한다.
+     */
+    @Query(value = "SELECT SUM(weighted_score_sum) / NULLIF(SUM(weighted_count_sum), 0) " +
+                   "FROM release_rating_summary", nativeQuery = true)
+    Optional<BigDecimal> calculateGlobalWeightedAverage();
 }
