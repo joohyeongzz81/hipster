@@ -21,8 +21,9 @@ public interface ChartScoreRepository extends JpaRepository<ChartScore, Long> {
 
     Optional<ChartScore> findFirstByOrderByLastUpdatedDesc();
 
-    @org.springframework.data.jpa.repository.Query("SELECT c FROM ChartScore c, Release r WHERE c.releaseId = r.id " +
-            "AND (:genreId IS NULL OR r.genreId = :genreId) " +
+    @org.springframework.data.jpa.repository.Query("SELECT c FROM ChartScore c JOIN c.release r " +
+            "LEFT JOIN r.releaseGenres rg " +
+            "WHERE (:genreId IS NULL OR rg.genre.id = :genreId) " +
             "AND (:year IS NULL OR YEAR(r.releaseDate) = :year) " +
             "AND (:releaseType IS NULL OR r.releaseType = :releaseType) " +
             "AND (:includeEsoteric = true OR c.isEsoteric = false) " +

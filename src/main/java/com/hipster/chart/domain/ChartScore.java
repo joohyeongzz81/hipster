@@ -7,23 +7,23 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import com.hipster.release.domain.Release;
+
 import java.time.LocalDateTime;
 
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Table(name = "chart_scores", indexes = {
-        @Index(name = "idx_chart_release", columnList = "releaseId", unique = true),
-        @Index(name = "idx_chart_bayesian", columnList = "bayesianScore DESC")
-})
+@Table(name = "chart_scores")
 public class ChartScore {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
-    private Long releaseId;
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "release_id", nullable = false, unique = true)
+    private Release release;
 
     @Column(nullable = false)
     private Long totalRatings;
@@ -51,8 +51,12 @@ public class ChartScore {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-    public ChartScore(final Long releaseId) {
-        this.releaseId = releaseId;
+    public ChartScore(final com.hipster.release.domain.Release release) {
+        this.release = release;
+    }
+
+    public Long getReleaseId() {
+        return release != null ? release.getId() : null;
     }
 
     public void updateScore(final Double bayesianScore, final Double weightedAvgRating,

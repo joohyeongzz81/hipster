@@ -28,9 +28,10 @@ public enum ErrorCode {
     EXPIRED_TOKEN(2007, HttpStatus.UNAUTHORIZED, "토큰이 만료되었습니다."),
     ACCESS_DENIED(2008, HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
 
-    // 3xxx: Artist Domain Custom Errors
+    // 3xxx: Artist & Genre Domain Custom Errors
     ARTIST_NOT_FOUND(3000, HttpStatus.NOT_FOUND, "아티스트를 찾을 수 없습니다."),
     ARTIST_ALREADY_DELETED(3001, HttpStatus.BAD_REQUEST, "이미 삭제된 아티스트입니다."),
+    GENRE_NOT_FOUND(3002, HttpStatus.NOT_FOUND, "장르를 찾을 수 없습니다."),
 
     // 4xxx: User & Token Domain Custom Errors
     USER_NOT_FOUND(4000, HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),

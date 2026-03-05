@@ -10,7 +10,6 @@ public record GenreNodeResponse(
         Long parentId,
         Integer level,
         String path,
-        Boolean isDescriptor,
         List<GenreNodeResponse> children
 ) {
     public static GenreNodeResponse from(final Genre genre) {
@@ -20,7 +19,6 @@ public record GenreNodeResponse(
                 genre.getParentId(),
                 genre.getLevel(),
                 genre.getPath(),
-                genre.getIsDescriptor(),
                 new ArrayList<>()
         );
     }

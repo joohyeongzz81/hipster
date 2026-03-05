@@ -32,7 +32,6 @@ public class GenreService {
                 .name(request.name())
                 .parentId(request.parentId())
                 .description(request.description())
-                .isDescriptor(request.isDescriptor())
                 .build());
 
         final ModerationSubmitRequest modRequest = new ModerationSubmitRequest(

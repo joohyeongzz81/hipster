@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
+import java.util.List;
 
 public record CreateReleaseRequest(
         @NotBlank(message = "Title is required")
@@ -15,7 +16,11 @@ public record CreateReleaseRequest(
         @NotNull(message = "Artist ID is required")
         Long artistId,
 
-        Long genreId,
+        Long locationId,
+
+        List<Long> primaryGenreIds,
+
+        List<Long> secondaryGenreIds,
 
         @NotNull(message = "Release type is required")
         ReleaseType releaseType,

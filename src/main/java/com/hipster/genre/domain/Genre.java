@@ -36,9 +36,6 @@ public class Genre {
     @Column(length = 255)
     private String path;
 
-    @Column(nullable = false)
-    private Boolean isDescriptor = false;
-
     @Column(columnDefinition = "TEXT")
     private String description;
 
@@ -56,12 +53,11 @@ public class Genre {
 
     @Builder
     public Genre(final String name, final Long parentId, final Integer level, final String path,
-                 final Boolean isDescriptor, final String description) {
+                 final String description) {
         this.name = name;
         this.parentId = parentId;
         this.level = level;
         this.path = path;
-        this.isDescriptor = isDescriptor;
         this.description = description;
     }
 

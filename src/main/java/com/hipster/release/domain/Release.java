@@ -10,15 +10,13 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Table(name = "releases", indexes = {
-        @Index(name = "idx_releases_title", columnList = "title"),
-        @Index(name = "idx_releases_type_date", columnList = "releaseType, releaseDate"),
-        @Index(name = "idx_releases_status", columnList = "status")
-})
+@Table(name = "releases")
 public class Release {
 
     @Id
@@ -28,8 +26,8 @@ public class Release {
     @Column(nullable = false)
     private Long artistId;
 
-    @Column(name = "genre_id")
-    private Long genreId;
+    @Column(name = "location_id")
+    private Long locationId;
 
     @Column(nullable = false, length = 500)
     private String title;
@@ -44,8 +42,17 @@ public class Release {
     @Column(length = 100)
     private String catalogNumber;
 
-    @Column(length = 100)
+    @Column(columnDefinition = "TEXT")
     private String label;
+
+    @OneToMany(mappedBy = "release", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ReleaseGenre> releaseGenres = new ArrayList<>();
+
+    @OneToMany(mappedBy = "release", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ReleaseDescriptor> releaseDescriptors = new ArrayList<>();
+
+    @OneToMany(mappedBy = "release", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ReleaseLanguage> releaseLanguages = new ArrayList<>();
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -60,10 +67,10 @@ public class Release {
     private LocalDateTime updatedAt;
 
     @Builder
-    public Release(final Long artistId, final Long genreId, final String title, final ReleaseType releaseType,
+    public Release(final Long artistId, final Long locationId, final String title, final ReleaseType releaseType,
                    final LocalDate releaseDate, final String catalogNumber, final String label) {
         this.artistId = artistId;
-        this.genreId = genreId;
+        this.locationId = locationId;
         this.title = title;
         this.releaseType = releaseType;
         this.releaseDate = releaseDate;

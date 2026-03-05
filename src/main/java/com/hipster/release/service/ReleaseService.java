@@ -17,6 +17,10 @@ import com.hipster.release.dto.response.ReleaseDetailResponse;
 import com.hipster.release.dto.request.ReleaseSearchRequest;
 import com.hipster.release.dto.response.ReleaseSummaryResponse;
 import com.hipster.release.repository.ReleaseRepository;
+import com.hipster.release.repository.ReleaseGenreRepository;
+import com.hipster.genre.repository.GenreRepository;
+import com.hipster.genre.domain.Genre;
+import com.hipster.release.domain.ReleaseGenre;
 import com.hipster.track.dto.response.TrackResponse;
 import com.hipster.track.service.TrackService;
 import jakarta.persistence.criteria.Predicate;
@@ -46,18 +50,23 @@ public class ReleaseService {
     private final ArtistRepository artistRepository;
     private final TrackService trackService;
     private final ReleaseRatingSummaryRepository releaseRatingSummaryRepository;
+    private final ReleaseGenreRepository releaseGenreRepository;
+    private final GenreRepository genreRepository;
 
     @Transactional
     public ModerationSubmitResponse createRelease(final CreateReleaseRequest request, final Long submitterId) {
         final Release release = releaseRepository.save(Release.builder()
                 .title(request.title())
                 .artistId(request.artistId())
-                .genreId(request.genreId())
+                .locationId(request.locationId())
                 .releaseType(request.releaseType())
                 .releaseDate(request.releaseDate())
                 .catalogNumber(request.catalogNumber())
                 .label(request.label())
                 .build());
+
+        saveReleaseGenres(release, request.primaryGenreIds(), true);
+        saveReleaseGenres(release, request.secondaryGenreIds(), false);
 
         final ModerationSubmitRequest modRequest = new ModerationSubmitRequest(
                 EntityType.RELEASE,
@@ -72,6 +81,23 @@ public class ReleaseService {
         }
 
         return response;
+    }
+
+    private void saveReleaseGenres(final Release release, final List<Long> genreIds, final boolean isPrimary) {
+        if (genreIds == null || genreIds.isEmpty()) return;
+        
+        int order = 1;
+        for (Long genreId : genreIds) {
+            final Genre genre = genreRepository.findById(genreId)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.GENRE_NOT_FOUND));
+            
+            releaseGenreRepository.save(ReleaseGenre.builder()
+                    .release(release)
+                    .genre(genre)
+                    .isPrimary(isPrimary)
+                    .order(order++)
+                    .build());
+        }
     }
 
     public ReleaseDetailResponse getReleaseDetail(final Long releaseId) {
@@ -151,6 +177,10 @@ public class ReleaseService {
             }
             if (request.artistId() != null) {
                 predicates.add(cb.equal(root.get("artistId"), request.artistId()));
+            }
+            if (request.genreId() != null) {
+                jakarta.persistence.criteria.Join<Release, ReleaseGenre> genreJoin = root.join("releaseGenres");
+                predicates.add(cb.equal(genreJoin.get("genre").get("id"), request.genreId()));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
