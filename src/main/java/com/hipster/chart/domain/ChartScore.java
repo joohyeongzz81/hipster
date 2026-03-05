@@ -51,7 +51,7 @@ public class ChartScore {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-    public ChartScore(final com.hipster.release.domain.Release release) {
+    public ChartScore(final Release release) {
         this.release = release;
     }
 

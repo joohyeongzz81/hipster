@@ -1,36 +1,83 @@
 version: "3.8"
 
 services:
-  # 1. MySQL Database
-  mysql:
+  # 1-1. MySQL Master (Write)
+  mysql-master:
     image: mysql:8.0
-    container_name: hipster-mysql
+    container_name: hipster-mysql-master
+    hostname: hipster-mysql-master
     ports:
       - "3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: hipster
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_master_data:/var/lib/mysql
+      - ./docker/mysql/master/init-master.sql:/docker-entrypoint-initdb.d/init-master.sql:ro
+    command: >
+      --server-id=1
+      --log-bin=mysql-bin
+      --binlog-format=ROW
+      --binlog-do-db=hipster
+      --expire-logs-days=7
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-ppassword",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 1-2. MySQL Slave (Read)
+  mysql-slave:
+    image: mysql:8.0
+    container_name: hipster-mysql-slave
+    hostname: hipster-mysql-slave
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: hipster
+    volumes:
+      - mysql_slave_data:/var/lib/mysql
+    command: >
+      --server-id=2
+      --relay-log=relay-bin
+      --read-only=ON
+      --log-replica-updates=ON
+    depends_on:
+      mysql-master:
+        condition: service_healthy
 
   # RabbitMQ Message Broker
   rabbitmq:
     image: rabbitmq:3-management
     container_name: hipster-rabbitmq
     ports:
-      - "5672:5672"   # for app
+      - "5672:5672" # for app
       - "15672:15672" # for management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: hipster
+      RABBITMQ_DEFAULT_PASS: hipster123
 
-  # 2. MySQL Exporter (DB 지표 수집용)
+  # 2. MySQL Exporter (Master 지표 수집용)
   mysqld-exporter:
     image: prom/mysqld-exporter:v0.14.0
     container_name: mysqld-exporter
     ports:
       - "9104:9104"
     environment:
-      - DATA_SOURCE_NAME=root:password@(mysql:3306)/hipster
+      - DATA_SOURCE_NAME=root:password@(mysql-master:3306)/hipster
     depends_on:
-      - mysql
+      - mysql-master
 
   prometheus:
     image: prom/prometheus:latest
@@ -58,4 +105,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  mysql_data:
+  mysql_master_data:
+  mysql_slave_data:
