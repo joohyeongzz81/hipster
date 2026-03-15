@@ -5,7 +5,9 @@ import jakarta.validation.constraints.Size;
 
 public record UpdateReviewRequest(
         @NotBlank(message = "리뷰 내용은 필수입니다.")
-        @Size(min = 10, max = 10000, message = "리뷰는 10자 이상 10000자 이하여야 합니다.")
-        String content
+        @Size(min = 50, max = 10000, message = "리뷰는 50자 이상 10000자 이하여야 합니다.")
+        String content,
+
+        Boolean isPublished
 ) {
 }

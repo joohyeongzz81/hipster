@@ -53,6 +53,7 @@ public class ReviewService {
                 .userId(userId)
                 .releaseId(releaseId)
                 .content(request.content())
+                .isPublished(request.isPublished())
                 .build());
 
         return ReviewResponse.of(review, user.getUsername());
@@ -62,7 +63,8 @@ public class ReviewService {
         validateActiveRelease(releaseId);
 
         final Pageable pageable = PageRequest.of(Math.max(0, page - 1), limit, Sort.by(Sort.Direction.DESC, "createdAt"));
-        final Page<Review> pageResult = reviewRepository.findByReleaseIdAndStatus(releaseId, ReviewStatus.ACTIVE, pageable);
+        final Page<Review> pageResult = reviewRepository.findByReleaseIdAndStatusAndIsPublishedTrue(
+                releaseId, ReviewStatus.ACTIVE, pageable);
 
         final Map<Long, User> userMap = buildUserMap(pageResult.getContent());
 
@@ -89,7 +91,7 @@ public class ReviewService {
         final Review review = findActiveReviewOrThrow(reviewId);
         validateOwnership(review, userId);
 
-        review.updateContent(request.content());
+        review.update(request.content(), request.isPublished());
         reviewRepository.save(review);
 
         final String username = userRepository.findById(userId)
@@ -106,6 +108,21 @@ public class ReviewService {
 
         review.delete();
         reviewRepository.save(review);
+    }
+
+    @Transactional
+    public ReviewResponse updateReviewPublication(final Long reviewId, final boolean isPublished, final Long userId) {
+        final Review review = findActiveReviewOrThrow(reviewId);
+        validateOwnership(review, userId);
+
+        review.updatePublication(isPublished);
+        reviewRepository.save(review);
+
+        final String username = userRepository.findById(userId)
+                .map(User::getUsername)
+                .orElse("Unknown");
+
+        return ReviewResponse.of(review, username);
     }
 
     public PagedResponse<UserReviewResponse> getUserReviews(final Long targetUserId, final int page, final int limit) {
@@ -143,6 +160,7 @@ public class ReviewService {
                             releaseTitle,
                             artistName,
                             review.getContent(),
+                            review.getIsPublished(),
                             review.getCreatedAt(),
                             review.getUpdatedAt()
                     );

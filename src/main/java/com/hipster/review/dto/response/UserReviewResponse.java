@@ -8,6 +8,7 @@ public record UserReviewResponse(
         String releaseTitle,
         String artistName,
         String content,
+        Boolean isPublished,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

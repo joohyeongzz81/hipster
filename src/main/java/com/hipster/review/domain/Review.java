@@ -35,6 +35,10 @@ public class Review {
     @Column(nullable = false)
     private String content;
 
+    @Column(nullable = false)
+    @ColumnDefault("false")
+    private Boolean isPublished = false;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @ColumnDefault("'ACTIVE'")
@@ -49,14 +53,22 @@ public class Review {
     private LocalDateTime updatedAt;
 
     @Builder
-    public Review(final Long userId, final Long releaseId, final String content) {
+    public Review(final Long userId, final Long releaseId, final String content, final Boolean isPublished) {
         this.userId = userId;
         this.releaseId = releaseId;
         this.content = content;
+        this.isPublished = Boolean.TRUE.equals(isPublished);
     }
 
-    public void updateContent(final String content) {
+    public void update(final String content, final Boolean isPublished) {
         this.content = content;
+        if (isPublished != null) {
+            this.isPublished = isPublished;
+        }
+    }
+
+    public void updatePublication(final boolean isPublished) {
+        this.isPublished = isPublished;
     }
 
     public void delete() {

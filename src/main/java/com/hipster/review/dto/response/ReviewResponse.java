@@ -10,6 +10,7 @@ public record ReviewResponse(
         String username,
         Long releaseId,
         String content,
+        Boolean isPublished,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
@@ -20,6 +21,7 @@ public record ReviewResponse(
                 username,
                 review.getReleaseId(),
                 review.getContent(),
+                review.getIsPublished(),
                 review.getCreatedAt(),
                 review.getUpdatedAt()
         );

@@ -5,6 +5,7 @@ import com.hipster.auth.dto.response.CurrentUserInfo;
 import com.hipster.global.dto.response.ApiResponse;
 import com.hipster.global.dto.response.PagedResponse;
 import com.hipster.review.dto.request.CreateReviewRequest;
+import com.hipster.review.dto.request.UpdateReviewPublicationRequest;
 import com.hipster.review.dto.request.UpdateReviewRequest;
 import com.hipster.review.dto.response.ReviewResponse;
 import com.hipster.review.dto.response.UserReviewResponse;
@@ -59,6 +60,15 @@ public class ReviewController {
             @CurrentUser final CurrentUserInfo user) {
         reviewService.deleteReview(id, user.userId());
         return ResponseEntity.ok(ApiResponse.of(200, "리뷰가 삭제되었습니다.", null));
+    }
+
+    @PutMapping("/reviews/{id}/publish")
+    public ResponseEntity<ApiResponse<ReviewResponse>> updateReviewPublication(
+            @PathVariable final Long id,
+            @RequestBody @Valid final UpdateReviewPublicationRequest request,
+            @CurrentUser final CurrentUserInfo user) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                reviewService.updateReviewPublication(id, request.isPublished(), user.userId())));
     }
 
     @GetMapping("/users/{userId}/reviews")
