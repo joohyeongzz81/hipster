@@ -1,33 +1,56 @@
 package com.hipster.batch.chart.step;
 
 import com.hipster.rating.domain.ReleaseRatingSummary;
-import com.hipster.rating.repository.ReleaseRatingSummaryRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.batch.item.data.RepositoryItemReader;
-import org.springframework.batch.item.data.builder.RepositoryItemReaderBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.domain.Sort;
+import org.springframework.jdbc.core.RowMapper;
 
-import java.util.Map;
+import javax.sql.DataSource;
 
 @Configuration
 @RequiredArgsConstructor
 public class ChartItemReaderConfig {
+    private static final int FETCH_SIZE = 2000;
 
-    private static final int PAGE_SIZE = 500;
-
-    private final ReleaseRatingSummaryRepository releaseRatingSummaryRepository;
+    private final DataSource dataSource;
 
     @Bean
-    public RepositoryItemReader<ReleaseRatingSummary> chartItemReader() {
-        return new RepositoryItemReaderBuilder<ReleaseRatingSummary>()
+    public org.springframework.batch.item.database.JdbcPagingItemReader<ReleaseRatingSummary> chartItemReader(
+            org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean queryProvider
+    ) throws Exception {
+        return new org.springframework.batch.item.database.builder.JdbcPagingItemReaderBuilder<ReleaseRatingSummary>()
+                .fetchSize(FETCH_SIZE)
+                .pageSize(FETCH_SIZE)
+                .dataSource(dataSource)
+                .rowMapper(releaseRatingSummaryRowMapper())
+                .queryProvider(queryProvider.getObject())
                 .name("chartItemReader")
-                .repository(releaseRatingSummaryRepository)
-                .methodName("findAll")
-                .pageSize(PAGE_SIZE)
-                .sorts(Map.of("id", Sort.Direction.ASC))
                 .build();
     }
-}
 
+    @Bean
+    public org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean chartQueryProvider() {
+        org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean factory = new org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean();
+        factory.setDataSource(dataSource);
+        factory.setSelectClause("SELECT id, release_id, total_rating_count, average_score, weighted_score_sum, weighted_count_sum, batch_synced_at, updated_at");
+        factory.setFromClause("FROM release_rating_summary");
+        factory.setSortKey("id");
+        return factory;
+    }
+
+    private RowMapper<ReleaseRatingSummary> releaseRatingSummaryRowMapper() {
+        return (rs, rowNum) -> {
+            ReleaseRatingSummary summary = new ReleaseRatingSummary(
+                    rs.getLong("release_id")
+            );
+            summary.recalculate(
+                    rs.getLong("total_rating_count"),
+                    rs.getDouble("average_score"),
+                    rs.getBigDecimal("weighted_score_sum"),
+                    rs.getBigDecimal("weighted_count_sum")
+            );
+            return summary;
+        };
+    }
+}

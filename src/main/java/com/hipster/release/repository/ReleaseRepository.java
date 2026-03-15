@@ -21,4 +21,19 @@ public interface ReleaseRepository extends JpaRepository<Release, Long>, JpaSpec
     List<Release> findAllByStatus(ReleaseStatus status);
 
     boolean existsByTitleAndArtistIdAndReleaseDate(String title, Long artistId, LocalDate releaseDate);
+
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT r FROM Release r " +
+            "LEFT JOIN FETCH r.releaseGenres " +
+            "WHERE r.id IN :releaseIds")
+    List<Release> findReleasesWithGenres(@org.springframework.data.repository.query.Param("releaseIds") java.util.Collection<Long> releaseIds);
+
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT r FROM Release r " +
+            "LEFT JOIN FETCH r.releaseDescriptors " +
+            "WHERE r.id IN :releaseIds")
+    List<Release> findReleasesWithDescriptors(@org.springframework.data.repository.query.Param("releaseIds") java.util.Collection<Long> releaseIds);
+
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT r FROM Release r " +
+            "LEFT JOIN FETCH r.releaseLanguages " +
+            "WHERE r.id IN :releaseIds")
+    List<Release> findReleasesWithLanguages(@org.springframework.data.repository.query.Param("releaseIds") java.util.Collection<Long> releaseIds);
 }

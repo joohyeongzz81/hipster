@@ -7,6 +7,7 @@ import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +21,8 @@ public class TestBatchController {
 
     private final JobLauncher jobLauncher;
     private final Job weightingRecalculationJob;
+    @Qualifier("chartUpdateJob")
+    private final Job chartUpdateJob;
 
     @PostMapping("/trigger")
     public ResponseEntity<String> triggerBatch() {
@@ -41,6 +44,28 @@ public class TestBatchController {
         log.info("Batch finished in {} ms", duration);
         
         return ResponseEntity.ok("Batch Triggered and Completed in " + duration + " ms.");
+    }
+
+    @PostMapping("/trigger/chart")
+    public ResponseEntity<String> triggerChartBatch() {
+        log.info("Manual trigger for chart update batch started.");
+
+        long startTime = System.currentTimeMillis();
+        try {
+            final JobParameters jobParameters = new JobParametersBuilder()
+                    .addLong("time", System.currentTimeMillis())
+                    .toJobParameters();
+            jobLauncher.run(chartUpdateJob, jobParameters);
+        } catch (Exception e) {
+            log.error("Manual chart batch trigger failed.", e);
+            return ResponseEntity.internalServerError().body("Chart batch failed: " + e.getMessage());
+        }
+        long endTime = System.currentTimeMillis();
+
+        long duration = endTime - startTime;
+        log.info("Chart batch finished in {} ms", duration);
+
+        return ResponseEntity.ok("Chart Batch Triggered and Completed in " + duration + " ms.");
     }
 }
 

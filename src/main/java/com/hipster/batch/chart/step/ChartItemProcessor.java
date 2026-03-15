@@ -71,8 +71,8 @@ public class ChartItemProcessor implements ItemProcessor<ReleaseRatingSummary, C
                 weightedAvgRating,
                 summary.getWeightedCountSum().doubleValue(),
                 summary.getTotalRatingCount(),
-                result.isEsoteric()
+                result.isEsoteric(),
+                null, null, null, null, null, null
         );
     }
 }
-

@@ -1,34 +1,122 @@
 package com.hipster.batch.chart.step;
 
+import com.hipster.batch.chart.benchmark.ChartProjectionWriteMode;
 import com.hipster.batch.chart.dto.ChartScoreDto;
+import com.hipster.batch.chart.repository.ChartReleaseMetadataQueryRepository;
 import com.hipster.batch.chart.repository.ChartScoreQueryRepository;
-import org.springframework.lang.NonNull;
+import com.hipster.chart.config.ChartPublishProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.item.Chunk;
 import org.springframework.batch.item.ItemWriter;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
-/**
- * 청크 단위로 ChartScoreDto 목록을 받아 chart_scores 테이블에 Bulk UPSERT.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class ChartItemWriter implements ItemWriter<ChartScoreDto> {
 
     private final ChartScoreQueryRepository chartScoreQueryRepository;
+    private final ChartReleaseMetadataQueryRepository chartReleaseMetadataQueryRepository;
+    private final ChartPublishProperties chartPublishProperties;
 
     @Override
     public void write(final @NonNull Chunk<? extends ChartScoreDto> chunk) {
-        final List<ChartScoreDto> items = new ArrayList<>(chunk.getItems());
-        if (items.isEmpty()) return;
+        writeWithBreakdown(chunk, defaultWriteMode());
+    }
 
-        chartScoreQueryRepository.bulkUpsertChartScores(items);
-        log.debug("[CHART BATCH] 청크 {} 건 UPSERT 완료", items.size());
+    public WriteBreakdown writeWithBreakdown(final @NonNull Chunk<? extends ChartScoreDto> chunk) {
+        return writeWithBreakdown(chunk, defaultWriteMode());
+    }
+
+    public WriteBreakdown writeWithBreakdown(final @NonNull Chunk<? extends ChartScoreDto> chunk,
+                                             final ChartProjectionWriteMode writeMode) {
+        final List<ChartScoreDto> items = new ArrayList<>(chunk.getItems());
+        if (items.isEmpty()) {
+            return new WriteBreakdown(0, 0, 0, 0);
+        }
+
+        final List<Long> releaseIds = items.stream()
+                .map(ChartScoreDto::releaseId)
+                .toList();
+
+        final long metadataFetchStart = System.nanoTime();
+        final Map<Long, ChartReleaseMetadataQueryRepository.ChartReleaseMetadata> releaseMetadataMap =
+                chartReleaseMetadataQueryRepository.findMetadataByReleaseIds(releaseIds);
+        final long metadataFetchMillis = Duration.ofNanos(System.nanoTime() - metadataFetchStart).toMillis();
+
+        final long serializationStart = System.nanoTime();
+        final List<ChartScoreDto> enrichedItems = items.stream()
+                .map(dto -> enrich(dto, releaseMetadataMap))
+                .toList();
+        final long serializationMillis = Duration.ofNanos(System.nanoTime() - serializationStart).toMillis();
+
+        final long upsertStart = System.nanoTime();
+        if (writeMode == ChartProjectionWriteMode.LIGHT_STAGE_INSERT) {
+            chartScoreQueryRepository.bulkInsertBenchmarkLightStageChartScores(enrichedItems);
+        } else if (writeMode == ChartProjectionWriteMode.PUBLISH_STAGE) {
+            chartScoreQueryRepository.bulkUpsertPublishStageChartScores(enrichedItems);
+        } else if (writeMode == ChartProjectionWriteMode.STAGING_INSERT) {
+            chartScoreQueryRepository.bulkInsertBenchmarkStageChartScores(enrichedItems);
+        } else {
+            chartScoreQueryRepository.bulkUpsertChartScores(enrichedItems);
+        }
+        final long upsertMillis = Duration.ofNanos(System.nanoTime() - upsertStart).toMillis();
+
+        log.debug("[CHART BATCH] mode={} chunk={} metadata={}ms serialization={}ms upsert={}ms",
+                writeMode, enrichedItems.size(), metadataFetchMillis, serializationMillis, upsertMillis);
+
+        return new WriteBreakdown(
+                enrichedItems.size(),
+                metadataFetchMillis,
+                serializationMillis,
+                upsertMillis
+        );
+    }
+
+    private ChartProjectionWriteMode defaultWriteMode() {
+        return chartPublishProperties.isEnabled()
+                ? ChartProjectionWriteMode.PUBLISH_STAGE
+                : ChartProjectionWriteMode.UPSERT;
+    }
+
+    private ChartScoreDto enrich(final ChartScoreDto dto,
+                                 final Map<Long, ChartReleaseMetadataQueryRepository.ChartReleaseMetadata> releaseMetadataMap) {
+        final ChartReleaseMetadataQueryRepository.ChartReleaseMetadata metadata = releaseMetadataMap.get(dto.releaseId());
+        if (metadata == null) {
+            return dto;
+        }
+
+        return new ChartScoreDto(
+                dto.releaseId(),
+                dto.bayesianScore(),
+                dto.weightedAvgRating(),
+                dto.effectiveVotes(),
+                dto.totalRatings(),
+                dto.isEsoteric(),
+                metadata.genreIds(),
+                metadata.releaseType(),
+                metadata.releaseYear(),
+                metadata.descriptorIds(),
+                metadata.locationId(),
+                metadata.languages()
+        );
+    }
+
+    public record WriteBreakdown(
+            int itemCount,
+            long metadataFetchMillis,
+            long serializationMillis,
+            long upsertMillis
+    ) {
+        public long totalMillis() {
+            return metadataFetchMillis + serializationMillis + upsertMillis;
+        }
     }
 }
-
