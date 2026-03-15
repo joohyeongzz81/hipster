@@ -10,6 +10,7 @@ import com.hipster.global.exception.ConflictException;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.ForbiddenException;
 import com.hipster.global.exception.NotFoundException;
+import com.hipster.moderation.domain.EntityType;
 import com.hipster.moderation.domain.ModerationQueue;
 import com.hipster.moderation.domain.ModerationStatus;
 import com.hipster.moderation.domain.RejectionReason;
@@ -73,7 +74,7 @@ public class ModerationQueueService {
 
         moderationQueueRepository.save(queueItem);
 
-        if (user.getWeightingScore() > 0.8) {
+        if (isEligibleForAutoApproval(request, user)) {
             queueItem.autoApprove();
             publishEntity(queueItem);
             moderationQueueRepository.save(queueItem);
@@ -198,6 +199,19 @@ public class ModerationQueueService {
         spamItem.reject(RejectionReason.SPAM_ABUSE, "Automated spam detection.");
         moderationQueueRepository.save(spamItem);
         return new ModerationSubmitResponse(spamItem.getId(), ModerationStatus.REJECTED, "Submission rejected due to spam suspicion.", "N/A");
+    }
+
+    private boolean isEligibleForAutoApproval(final ModerationSubmitRequest request, final User user) {
+        if (request.entityType() != EntityType.RELEASE) {
+            return false;
+        }
+        if (user.getWeightingScore() == null || user.getWeightingScore() <= 0.8) {
+            return false;
+        }
+
+        // 현재 도메인에는 커뮤니티 찬성표/hold 데이터가 없으므로,
+        // 요구사항을 어기며 과도하게 자동 승인하지 않도록 보수적으로 처리한다.
+        return false;
     }
 
     private Specification<ModerationQueue> buildQueueSpecification(final ModerationStatus status, final Integer priority) {

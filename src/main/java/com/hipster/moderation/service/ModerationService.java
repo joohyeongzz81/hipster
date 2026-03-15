@@ -5,7 +5,6 @@ import com.hipster.global.exception.NotFoundException;
 import com.hipster.moderation.domain.ModerationQueue;
 import com.hipster.moderation.dto.request.SubmitRequest;
 import com.hipster.moderation.repository.ModerationQueueRepository;
-import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,7 +19,7 @@ public class ModerationService {
 
     @Transactional
     public void submit(final Long submitterId, final SubmitRequest request) {
-        final User user = userRepository.findById(submitterId)
+        userRepository.findById(submitterId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
 
         final ModerationQueue queueItem = ModerationQueue.builder()
@@ -30,10 +29,6 @@ public class ModerationService {
                 .metaComment(request.metaComment())
                 .priority(2)
                 .build();
-
-        if (user.getWeightingScore() > 0.8) {
-            queueItem.autoApprove();
-        }
 
         moderationQueueRepository.save(queueItem);
     }
