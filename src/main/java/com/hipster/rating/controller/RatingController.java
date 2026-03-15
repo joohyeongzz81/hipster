@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.DeleteMapping;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -49,5 +50,13 @@ public class RatingController {
             @RequestParam(defaultValue = "1") final int page,
             @RequestParam(defaultValue = "20") final int limit) {
         return ResponseEntity.ok(ApiResponse.ok(ratingService.getUserRatings(userId, page, limit)));
+    }
+
+    @DeleteMapping("/releases/{releaseId}/ratings")
+    public ResponseEntity<ApiResponse<Void>> deleteRating(
+            @PathVariable final Long releaseId,
+            @CurrentUser final CurrentUserInfo userInfo) {
+        ratingService.deleteRating(releaseId, userInfo.userId());
+        return ResponseEntity.ok(ApiResponse.of(200, "평점이 삭제되었습니다.", null));
     }
 }
