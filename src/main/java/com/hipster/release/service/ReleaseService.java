@@ -39,6 +39,9 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -143,8 +146,30 @@ public class ReleaseService {
 
         final Page<Release> pageResult = releaseRepository.findAll(spec, pageable);
 
+        final Map<Long, String> artistNameMap = artistRepository.findAllById(pageResult.getContent().stream()
+                        .map(Release::getArtistId)
+                        .collect(Collectors.toSet()))
+                .stream()
+                .collect(Collectors.toMap(Artist::getId, Artist::getName));
+
+        final Map<Long, ReleaseRatingSummary> summaryMap = releaseRatingSummaryRepository.findAllByReleaseIdIn(
+                        pageResult.getContent().stream()
+                                .map(Release::getId)
+                                .collect(Collectors.toSet()))
+                .stream()
+                .collect(Collectors.toMap(ReleaseRatingSummary::getReleaseId, Function.identity()));
+
         final List<ReleaseSummaryResponse> content = pageResult.getContent().stream()
-                .map(ReleaseSummaryResponse::from)
+                .map(release -> {
+                    final String artistName = artistNameMap.getOrDefault(release.getArtistId(), "Unknown Artist");
+                    final ReleaseRatingSummary summary = summaryMap.get(release.getId());
+                    final double averageRating = summary != null
+                            ? Math.round(summary.getAverageScore() * 100.0) / 100.0
+                            : 0.0;
+                    final int totalRatings = summary != null ? (int) summary.getTotalRatingCount() : 0;
+
+                    return ReleaseSummaryResponse.of(release, artistName, averageRating, totalRatings);
+                })
                 .toList();
 
         final PaginationDto pagination = new PaginationDto(page, limit, pageResult.getTotalElements(), pageResult.getTotalPages());

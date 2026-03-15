@@ -14,16 +14,17 @@ public record ReleaseSummaryResponse(
         Double averageRating,
         Integer totalRatings
 ) {
-    public static ReleaseSummaryResponse from(final Release release) {
+    public static ReleaseSummaryResponse of(final Release release, final String artistName,
+                                            final Double averageRating, final Integer totalRatings) {
         return new ReleaseSummaryResponse(
                 release.getId(),
                 release.getTitle(),
                 release.getArtistId(),
-                "Unknown Artist", // TODO: Fetch artist name from Artist service/repository
+                artistName,
                 release.getReleaseType(),
                 release.getReleaseDate(),
-                0.0, // TODO: Fetch rating stats
-                0    // TODO: Fetch rating stats
+                averageRating,
+                totalRatings
         );
     }
 }
