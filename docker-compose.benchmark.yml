@@ -1,0 +1,44 @@
+version: "3.8"
+
+services:
+  app-benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile.benchmark
+    container_name: hipster-app-benchmark
+    ports:
+      - "18080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: benchmark
+      SPRING_DATASOURCE_MASTER_JDBC_URL: jdbc:mysql://mysql-master:3306/hipster?rewriteBatchedStatements=true&profileSQL=true&logger=Slf4JLogger&maxQuerySizeToLog=999999&useCursorFetch=true
+      SPRING_DATASOURCE_MASTER_USERNAME: root
+      SPRING_DATASOURCE_MASTER_PASSWORD: password
+      SPRING_DATASOURCE_SLAVE_JDBC_URL: jdbc:mysql://mysql-master:3306/hipster?rewriteBatchedStatements=true&profileSQL=true&logger=Slf4JLogger&maxQuerySizeToLog=999999&useCursorFetch=true
+      SPRING_DATASOURCE_SLAVE_USERNAME: root
+      SPRING_DATASOURCE_SLAVE_PASSWORD: password
+      HIPSTER_DATASOURCE_ROUTING_ENABLED: "false"
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
+      CHART_SEARCH_INDEX_NAME: chart_scores_bench
+      CHART_PUBLISH_ENABLED: "true"
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: hipster
+      SPRING_RABBITMQ_PASSWORD: hipster123
+      LOGGING_LEVEL_COM_HIPSTER: INFO
+      LOGGING_LEVEL_COM_HIPSTER_CHART_BENCHMARK: DEBUG
+      LOGGING_LEVEL_ORG_HIBERNATE_SQL: INFO
+    volumes:
+      - ./benchmarks/runs:/app/benchmarks/runs
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+    cpus: 2.0
+    mem_limit: 2g

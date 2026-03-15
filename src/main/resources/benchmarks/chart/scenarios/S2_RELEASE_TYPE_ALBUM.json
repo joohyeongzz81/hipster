@@ -1,0 +1,14 @@
+{
+  "name": "S2_RELEASE_TYPE_ALBUM",
+  "path": "/api/v1/charts",
+  "page": 0,
+  "size": 20,
+  "query": {
+    "releaseType": "ALBUM",
+    "includeEsoteric": false
+  },
+  "expect": {
+    "sort": "bayesian_score_desc",
+    "countIncluded": false
+  }
+}

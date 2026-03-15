@@ -1,0 +1,14 @@
+{
+  "name": "G2_GENRES_1_7",
+  "path": "/api/v1/charts",
+  "page": 0,
+  "size": 20,
+  "query": {
+    "genreIds": [1, 7],
+    "includeEsoteric": false
+  },
+  "expect": {
+    "sort": "bayesian_score_desc",
+    "countIncluded": false
+  }
+}

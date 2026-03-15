@@ -1,0 +1,13 @@
+{
+  "name": "P3_PAGE_500",
+  "path": "/api/v1/charts",
+  "page": 500,
+  "size": 20,
+  "query": {
+    "includeEsoteric": false
+  },
+  "expect": {
+    "sort": "bayesian_score_desc",
+    "countIncluded": false
+  }
+}
