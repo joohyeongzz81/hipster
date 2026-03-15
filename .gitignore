@@ -41,3 +41,8 @@ docs/
 /.agents
 /.gemini
 .agent/workflows/never-run-tests.md
+/.my.cnf
+/.gradle-home/
+/.gradle-local/
+/.gradle-user-home/
+/benchmarks/
