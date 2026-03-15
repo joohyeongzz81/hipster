@@ -15,6 +15,8 @@ public interface ReleaseRatingSummaryRepository extends JpaRepository<ReleaseRat
     
     Optional<ReleaseRatingSummary> findByReleaseId(Long releaseId);
 
+    java.util.List<ReleaseRatingSummary> findAllByReleaseIdIn(java.util.Collection<Long> releaseIds);
+
     /**
      * 평점 신규 등록 (UPSERT)
      */
@@ -74,4 +76,10 @@ public interface ReleaseRatingSummaryRepository extends JpaRepository<ReleaseRat
     @Query(value = "SELECT SUM(weighted_score_sum) / NULLIF(SUM(weighted_count_sum), 0) " +
                    "FROM release_rating_summary", nativeQuery = true)
     Optional<BigDecimal> calculateGlobalWeightedAverage();
+
+    @Query(value = "SELECT MAX(batch_synced_at) FROM release_rating_summary", nativeQuery = true)
+    Optional<LocalDateTime> findMaxBatchSyncedAt();
+
+    @Query(value = "SELECT MAX(updated_at) FROM release_rating_summary", nativeQuery = true)
+    Optional<LocalDateTime> findMaxUpdatedAt();
 }

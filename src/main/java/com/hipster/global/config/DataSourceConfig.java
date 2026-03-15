@@ -2,15 +2,19 @@ package com.hipster.global.config;
 
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.orm.jpa.HibernateProperties;
+import org.springframework.boot.autoconfigure.orm.jpa.HibernateSettings;
+import org.springframework.boot.autoconfigure.orm.jpa.JpaProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.jdbc.DataSourceBuilder;
+import org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.datasource.LazyConnectionDataSourceProxy;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
-import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
@@ -34,7 +38,12 @@ public class DataSourceConfig {
     @Bean(name = "routingDataSource")
     public DataSource routingDataSource(
             @Qualifier("masterDataSource") DataSource master,
-            @Qualifier("slaveDataSource") DataSource slave) {
+            @Qualifier("slaveDataSource") DataSource slave,
+            @Value("${hipster.datasource.routing-enabled:true}") boolean routingEnabled) {
+
+        if (!routingEnabled) {
+            return master;
+        }
 
         ReplicationRoutingDataSource routing = new ReplicationRoutingDataSource();
         routing.setTargetDataSources(Map.of(
@@ -46,9 +55,8 @@ public class DataSourceConfig {
     }
 
     /**
-     * LazyConnectionDataSourceProxy를 통해 트랜잭션이 실제로 시작되는 시점(첫 쿼리)에
+     * LazyConnectionDataSourceProxy를 통해 트랜잭션이 실제로 시작되는 시점에
      * routingDataSource의 determineCurrentLookupKey()가 호출되도록 함.
-     * 이 프록시 없이는 DataSource가 트랜잭션 시작 전에 결정되어 readOnly가 항상 false로 읽힘.
      */
     @Primary
     @Bean(name = "dataSource")
@@ -56,15 +64,26 @@ public class DataSourceConfig {
         return new LazyConnectionDataSourceProxy(routing);
     }
 
+    /**
+     * JpaProperties: spring.jpa.properties.* (format_sql 등)
+     * HibernateProperties: spring.jpa.hibernate.ddl-auto → hibernate.hbm2ddl.auto 변환 담당
+     * 두 가지를 합쳐야 application.properties의 모든 JPA 설정이 적용됨.
+     */
     @Bean
     public LocalContainerEntityManagerFactoryBean entityManagerFactory(
-            @Qualifier("dataSource") DataSource dataSource) {
+            @Qualifier("dataSource") DataSource dataSource,
+            JpaProperties jpaProperties,
+            HibernateProperties hibernateProperties,
+            EntityManagerFactoryBuilder builder) {
 
-        LocalContainerEntityManagerFactoryBean emf = new LocalContainerEntityManagerFactoryBean();
-        emf.setDataSource(dataSource);
-        emf.setPackagesToScan("com.hipster");
-        emf.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-        return emf;
+        Map<String, Object> properties = hibernateProperties.determineHibernateProperties(
+                jpaProperties.getProperties(), new HibernateSettings());
+
+        return builder
+                .dataSource(dataSource)
+                .packages("com.hipster")
+                .properties(properties)
+                .build();
     }
 
     @Bean

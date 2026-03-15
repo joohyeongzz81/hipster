@@ -1,116 +1,124 @@
 package com.hipster.chart.service;
 
-import com.hipster.artist.domain.Artist;
-import com.hipster.artist.repository.ArtistRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hipster.chart.domain.ChartScore;
-import com.hipster.chart.dto.response.ChartEntryResponse;
 import com.hipster.chart.dto.request.ChartFilterRequest;
 import com.hipster.chart.dto.response.TopChartResponse;
+import com.hipster.chart.publish.service.ChartPublishedVersionService;
 import com.hipster.chart.repository.ChartScoreRepository;
-import com.hipster.global.exception.BadRequestException;
-import com.hipster.global.exception.ErrorCode;
-import com.hipster.release.domain.Release;
-import com.hipster.release.repository.ReleaseRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChartService {
 
-    private final ReleaseRepository releaseRepository;
+    private static final Duration CACHE_TTL = Duration.ofDays(7);
+
     private final ChartScoreRepository chartScoreRepository;
-    private final ArtistRepository artistRepository;
+    private final ChartSearchService chartSearchService;
+    private final ChartResponseAssembler chartResponseAssembler;
+    private final ChartLastUpdatedService chartLastUpdatedService;
+    private final ChartPublishedVersionService chartPublishedVersionService;
+    private final StringRedisTemplate redisTemplate;
+    private final ChartCacheKeyGenerator cacheKeyGenerator;
+    private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
-    public TopChartResponse getTopChart(final Integer limit, final ChartFilterRequest filter) {
-        validateLimit(limit);
-        log.debug("Fetching top {} chart from DB with filter: {}", limit, filter);
+    public TopChartResponse getCharts(final ChartFilterRequest filter, final int page, final int size) {
+        final String cacheKey = cacheKeyGenerator.generateKey(filter, page);
 
-        final Pageable pageable = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "bayesianScore"));
+        try {
+            final String cachedJson = redisTemplate.opsForValue().get(cacheKey);
+            if (cachedJson != null) {
+                return objectMapper.readValue(cachedJson, TopChartResponse.class);
+            }
+        } catch (Exception e) {
+            log.warn("[Redis Fallback] 차트 캐시 조회에 실패해 검색 경로로 전환합니다. key={}, reason={}", cacheKey, e.getMessage());
+        }
+
+        final Pageable pageable = PageRequest.of(page, size);
         final List<ChartScore> chartScores = fetchChartScores(filter, pageable);
 
-        final List<ChartEntryResponse> entries = buildChartEntries(chartScores);
+        final LocalDateTime lastUpdated = chartLastUpdatedService.getLastUpdated();
 
-        final LocalDateTime lastUpdated = chartScoreRepository.findFirstByOrderByLastUpdatedDesc()
-                .map(ChartScore::getLastUpdated)
-                .orElse(LocalDateTime.now());
+        final TopChartResponse response = chartResponseAssembler.assemble(
+                buildChartTitle(size, filter),
+                chartPublishedVersionService.getPublishedVersionOrLegacy(),
+                lastUpdated,
+                chartScores
+        );
 
-        final String chartTitle = buildChartTitle(limit, filter);
-
-        return TopChartResponse.builder()
-                .chartType(chartTitle)
-                .lastUpdated(lastUpdated)
-                .entries(entries)
-                .build();
-    }
-
-    private void validateLimit(final int limit) {
-        if (limit < 10 || limit > 1000) {
-            throw new BadRequestException(ErrorCode.INVALID_CHART_LIMIT);
+        try {
+            final String jsonResponse = objectMapper.writeValueAsString(response);
+            redisTemplate.opsForValue().set(cacheKey, jsonResponse, CACHE_TTL);
+        } catch (Exception e) {
+            log.warn("[Redis Fallback] 차트 캐시 저장에 실패했습니다. key={}, reason={}", cacheKey, e.getMessage());
         }
+
+        return response;
     }
 
     private List<ChartScore> fetchChartScores(final ChartFilterRequest filter, final Pageable pageable) {
-        if (filter == null) {
-            return chartScoreRepository.findCharts(null, null, null, false, pageable);
-        }
-        return chartScoreRepository.findCharts(
-                filter.genreId(),
-                filter.year(),
-                filter.releaseType(),
-                Boolean.TRUE.equals(filter.includeEsoteric()),
-                pageable
-        );
-    }
+        final ChartFilterRequest safeFilter = filter == null
+                ? ChartFilterRequest.empty()
+                : filter;
 
-    private List<ChartEntryResponse> buildChartEntries(final List<ChartScore> chartScores) {
-        final List<ChartEntryResponse> entries = new ArrayList<>();
-        long rank = 1;
+        try {
+            final List<Long> releaseIds = chartSearchService.searchReleaseIds(
+                    safeFilter,
+                    pageable.getPageNumber(),
+                    pageable.getPageSize()
+            );
 
-        for (final ChartScore score : chartScores) {
-            final Release release = releaseRepository.findById(score.getReleaseId())
-                    .orElse(null);
-
-            if (release != null) {
-                final String artistName = artistRepository.findById(release.getArtistId())
-                        .map(Artist::getName)
-                        .orElse("Unknown Artist");
-
-                final ChartEntryResponse entry = ChartEntryResponse.builder()
-                        .rank(rank++)
-                        .releaseId(score.getReleaseId())
-                        .title(release.getTitle())
-                        .artistName(artistName)
-                        .releaseYear(release.getReleaseDate().getYear())
-                        .bayesianScore(score.getBayesianScore())
-                        .weightedAvgRating(score.getWeightedAvgRating())
-                        .totalRatings(score.getTotalRatings())
-                        .isEsoteric(score.getIsEsoteric())
-                        .build();
-
-                entries.add(entry);
+            if (releaseIds.isEmpty()) {
+                return List.of();
             }
+
+            final Map<Long, ChartScore> chartScoreByReleaseId = chartScoreRepository.findAllWithReleaseByReleaseIds(releaseIds)
+                    .stream()
+                    .collect(Collectors.toMap(ChartScore::getReleaseId, Function.identity()));
+
+            final List<ChartScore> orderedChartScores = new ArrayList<>();
+            for (Long releaseId : releaseIds) {
+                final ChartScore chartScore = chartScoreByReleaseId.get(releaseId);
+                if (chartScore != null) {
+                    orderedChartScores.add(chartScore);
+                }
+            }
+            return orderedChartScores;
+        } catch (Exception e) {
+            log.warn("[Chart Search Fallback] ES 조회에 실패해 MySQL 경로로 전환합니다. reason={}", e.getMessage());
+            return chartScoreRepository.findChartsDynamic(safeFilter, pageable);
         }
-        return entries;
     }
 
     private String buildChartTitle(final int limit, final ChartFilterRequest filter) {
         final StringBuilder title = new StringBuilder("Top " + limit + " Releases");
         if (filter != null) {
-            if (filter.genreId() != null) title.append(" (Genre ").append(filter.genreId()).append(")");
-            if (filter.year() != null) title.append(" (").append(filter.year()).append(")");
-            if (filter.releaseType() != null) title.append(" [").append(filter.releaseType()).append("]");
+            if (filter.hasGenreFilter()) {
+                title.append(" (Genres ").append(filter.normalizedGenreIds()).append(")");
+            }
+            if (filter.year() != null) {
+                title.append(" (").append(filter.year()).append(")");
+            }
+            if (filter.releaseType() != null) {
+                title.append(" [").append(filter.releaseType()).append("]");
+            }
         }
         return title.toString();
     }

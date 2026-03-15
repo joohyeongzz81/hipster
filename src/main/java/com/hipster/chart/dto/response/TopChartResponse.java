@@ -8,6 +8,7 @@ import java.util.List;
 @Builder
 public record TopChartResponse(
         String chartType,
+        String version,
         LocalDateTime lastUpdated,
         List<ChartEntryResponse> entries
 ) {

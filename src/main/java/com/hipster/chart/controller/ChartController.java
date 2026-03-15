@@ -19,11 +19,12 @@ public class ChartController {
 
     private final ChartService chartService;
 
-    @GetMapping("/top")
-    public ResponseEntity<ApiResponse<TopChartResponse>> getTopChart(
-            @RequestParam(defaultValue = "100") final Integer limit,
-            @ModelAttribute final ChartFilterRequest filter) {
-        final TopChartResponse response = chartService.getTopChart(limit, filter);
+    @GetMapping
+    public ResponseEntity<ApiResponse<TopChartResponse>> getCharts(
+            @ModelAttribute final ChartFilterRequest filter,
+            @RequestParam(defaultValue = "0") final int page,
+            @RequestParam(defaultValue = "20") final int size) {
+        final TopChartResponse response = chartService.getCharts(filter, page, size);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 }

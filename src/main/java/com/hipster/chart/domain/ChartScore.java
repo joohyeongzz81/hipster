@@ -8,6 +8,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import com.hipster.release.domain.Release;
+import com.hipster.release.domain.ReleaseType;
 
 import java.time.LocalDateTime;
 
@@ -42,6 +43,25 @@ public class ChartScore {
 
     @Column(nullable = false)
     private LocalDateTime lastUpdated;
+
+    @Column(name = "genre_ids", columnDefinition = "JSON")
+    private String genreIds;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "release_type")
+    private ReleaseType releaseType;
+
+    @Column(name = "release_year")
+    private Integer releaseYear;
+
+    @Column(name = "descriptor_ids", columnDefinition = "JSON")
+    private String descriptorIds;
+
+    @Column(name = "location_id")
+    private Long locationId;
+
+    @Column(name = "languages", columnDefinition = "JSON")
+    private String languages;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
