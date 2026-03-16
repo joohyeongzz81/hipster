@@ -15,10 +15,14 @@ public record ModerationQueueItemResponse(
         Long submitterId,
         String submitterUsername,
         Double submitterWeighting,
+        Long moderatorId,
         ModerationStatus status,
         Integer priority,
         String metaComment,
+        String submissionSnapshot,
         LocalDateTime submittedAt,
+        LocalDateTime claimedAt,
+        LocalDateTime claimExpiresAt,
         Long daysSinceSubmit
 ) {
     public static ModerationQueueItemResponse of(final ModerationQueue item, final User submitter) {
@@ -29,10 +33,14 @@ public record ModerationQueueItemResponse(
                 item.getSubmitterId(),
                 submitter != null ? submitter.getUsername() : "Unknown",
                 submitter != null ? submitter.getWeightingScore() : 0.0,
+                item.getModeratorId(),
                 item.getStatus(),
                 item.getPriority(),
                 item.getMetaComment(),
+                item.getSubmissionSnapshot(),
                 item.getSubmittedAt(),
+                item.getClaimedAt(),
+                item.getClaimExpiresAt(),
                 ChronoUnit.DAYS.between(item.getSubmittedAt(), LocalDateTime.now())
         );
     }

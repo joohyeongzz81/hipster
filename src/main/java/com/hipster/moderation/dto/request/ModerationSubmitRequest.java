@@ -13,6 +13,8 @@ public record ModerationSubmitRequest(
 
         @NotBlank(message = "Meta comment is required.")
         @Size(min = 20, message = "Meta comment must be at least 20 characters.")
-        String metaComment
+        String metaComment,
+
+        Object submissionSnapshot
 ) {
 }

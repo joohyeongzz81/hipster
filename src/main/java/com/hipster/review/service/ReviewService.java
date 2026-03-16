@@ -5,6 +5,9 @@ import com.hipster.global.dto.response.PaginationDto;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.ForbiddenException;
 import com.hipster.global.exception.NotFoundException;
+import com.hipster.moderation.domain.EntityType;
+import com.hipster.moderation.dto.request.ModerationSubmitRequest;
+import com.hipster.moderation.service.ModerationQueueService;
 import com.hipster.review.domain.Review;
 import com.hipster.review.domain.ReviewStatus;
 import com.hipster.review.dto.request.CreateReviewRequest;
@@ -27,6 +30,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,19 +46,25 @@ public class ReviewService {
     private final ReleaseRepository releaseRepository;
     private final UserRepository userRepository;
     private final ArtistRepository artistRepository;
+    private final ModerationQueueService moderationQueueService;
 
     @Transactional
     public ReviewResponse createReview(final Long releaseId, final CreateReviewRequest request, final Long userId) {
         validateActiveRelease(releaseId);
 
         final User user = findUserOrThrow(userId);
+        final boolean requestedPublication = Boolean.TRUE.equals(request.isPublished());
 
         final Review review = reviewRepository.save(Review.builder()
                 .userId(userId)
                 .releaseId(releaseId)
                 .content(request.content())
-                .isPublished(request.isPublished())
+                .isPublished(false)
                 .build());
+
+        if (requestedPublication) {
+            submitReviewPublication(review, userId, "create_review");
+        }
 
         return ReviewResponse.of(review, user.getUsername());
     }
@@ -91,8 +101,18 @@ public class ReviewService {
         final Review review = findActiveReviewOrThrow(reviewId);
         validateOwnership(review, userId);
 
-        review.update(request.content(), request.isPublished());
+        final boolean shouldQueuePublication = shouldQueuePublication(review.getIsPublished(), request.isPublished());
+
+        if (shouldQueuePublication) {
+            review.update(request.content(), false);
+        } else {
+            review.update(request.content(), request.isPublished());
+        }
         reviewRepository.save(review);
+
+        if (shouldQueuePublication) {
+            submitReviewPublication(review, userId, "update_review");
+        }
 
         final String username = userRepository.findById(userId)
                 .map(User::getUsername)
@@ -115,8 +135,19 @@ public class ReviewService {
         final Review review = findActiveReviewOrThrow(reviewId);
         validateOwnership(review, userId);
 
-        review.updatePublication(isPublished);
+        if (isPublished && review.getIsPublished()) {
+            final String username = userRepository.findById(userId)
+                    .map(User::getUsername)
+                    .orElse("Unknown");
+            return ReviewResponse.of(review, username);
+        }
+
+        review.unpublish();
         reviewRepository.save(review);
+
+        if (isPublished) {
+            submitReviewPublication(review, userId, "publish_review");
+        }
 
         final String username = userRepository.findById(userId)
                 .map(User::getUsername)
@@ -207,5 +238,33 @@ public class ReviewService {
     private String resolveUsername(final Map<Long, User> userMap, final Long userId) {
         final User user = userMap.get(userId);
         return user != null ? user.getUsername() : "Unknown";
+    }
+
+    private boolean shouldQueuePublication(final boolean currentPublished, final Boolean requestedPublished) {
+        return Boolean.TRUE.equals(requestedPublished) || (requestedPublished == null && currentPublished);
+    }
+
+    private void submitReviewPublication(final Review review, final Long userId, final String source) {
+        moderationQueueService.submit(new ModerationSubmitRequest(
+                EntityType.REVIEW,
+                review.getId(),
+                buildReviewMetaComment(review, source),
+                buildReviewSnapshot(review, source)
+        ), userId);
+    }
+
+    private String buildReviewMetaComment(final Review review, final String source) {
+        return "Review publication request (" + source + ") for review " + review.getId() + ".";
+    }
+
+    private Map<String, Object> buildReviewSnapshot(final Review review, final String source) {
+        final Map<String, Object> snapshot = new HashMap<>();
+        snapshot.put("reviewId", review.getId());
+        snapshot.put("releaseId", review.getReleaseId());
+        snapshot.put("userId", review.getUserId());
+        snapshot.put("content", review.getContent());
+        snapshot.put("requestedPublication", true);
+        snapshot.put("source", source);
+        return snapshot;
     }
 }

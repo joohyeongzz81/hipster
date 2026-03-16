@@ -7,7 +7,6 @@ import com.hipster.global.dto.response.PaginationDto;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.NotFoundException;
 import com.hipster.moderation.domain.EntityType;
-import com.hipster.moderation.domain.ModerationStatus;
 import com.hipster.moderation.dto.request.ModerationSubmitRequest;
 import com.hipster.moderation.dto.response.ModerationSubmitResponse;
 import com.hipster.moderation.service.ModerationQueueService;
@@ -38,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -74,16 +74,11 @@ public class ReleaseService {
         final ModerationSubmitRequest modRequest = new ModerationSubmitRequest(
                 EntityType.RELEASE,
                 release.getId(),
-                request.metaComment()
+                request.metaComment(),
+                buildReleaseSnapshot(request, release)
         );
 
-        final ModerationSubmitResponse response = moderationQueueService.submit(modRequest, submitterId);
-
-        if (response.status() == ModerationStatus.REJECTED) {
-            releaseRepository.delete(release);
-        }
-
-        return response;
+        return moderationQueueService.submit(modRequest, submitterId);
     }
 
     private void saveReleaseGenres(final Release release, final List<Long> genreIds, final boolean isPrimary) {
@@ -101,6 +96,22 @@ public class ReleaseService {
                     .order(order++)
                     .build());
         }
+    }
+
+    private Map<String, Object> buildReleaseSnapshot(final CreateReleaseRequest request, final Release release) {
+        final Map<String, Object> snapshot = new HashMap<>();
+        snapshot.put("releaseId", release.getId());
+        snapshot.put("title", request.title());
+        snapshot.put("artistId", request.artistId());
+        snapshot.put("locationId", request.locationId());
+        snapshot.put("primaryGenreIds", request.primaryGenreIds());
+        snapshot.put("secondaryGenreIds", request.secondaryGenreIds());
+        snapshot.put("releaseType", request.releaseType());
+        snapshot.put("releaseDate", request.releaseDate());
+        snapshot.put("catalogNumber", request.catalogNumber());
+        snapshot.put("label", request.label());
+        snapshot.put("metaComment", request.metaComment());
+        return snapshot;
     }
 
     public ReleaseDetailResponse getReleaseDetail(final Long releaseId) {

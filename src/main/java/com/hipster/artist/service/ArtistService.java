@@ -21,7 +21,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -38,9 +40,21 @@ public class ArtistService {
         final ModerationSubmitRequest modRequest = new ModerationSubmitRequest(
                 EntityType.ARTIST,
                 artist.getId(),
-                request.metaComment());
+                request.metaComment(),
+                buildArtistSnapshot(request, artist));
 
         return moderationQueueService.submit(modRequest, submitterId);
+    }
+
+    private Map<String, Object> buildArtistSnapshot(final CreateArtistRequest request, final Artist artist) {
+        final Map<String, Object> snapshot = new HashMap<>();
+        snapshot.put("artistId", artist.getId());
+        snapshot.put("name", request.name());
+        snapshot.put("description", request.description());
+        snapshot.put("formedYear", request.formedYear());
+        snapshot.put("country", request.country());
+        snapshot.put("metaComment", request.metaComment());
+        return snapshot;
     }
 
     public ArtistResponse getArtist(final Long id) {

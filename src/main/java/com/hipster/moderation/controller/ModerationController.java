@@ -43,6 +43,15 @@ public class ModerationController {
         return ResponseEntity.ok(ApiResponse.ok(moderationQueueService.claimQueueItem(id, moderator.userId())));
     }
 
+    @PostMapping("/queue/{id}/unclaim")
+    @RequireRole({UserRole.MODERATOR, UserRole.ADMIN})
+    public ResponseEntity<ApiResponse<Void>> unclaimQueueItem(
+            @PathVariable final Long id,
+            @CurrentUser final CurrentUserInfo moderator) {
+        moderationQueueService.unclaimQueueItem(id, moderator.userId());
+        return ResponseEntity.ok(ApiResponse.of(200, "검토 점유를 해제했습니다.", null));
+    }
+
     @PostMapping("/queue/{id}/approve")
     @RequireRole({UserRole.MODERATOR, UserRole.ADMIN})
     public ResponseEntity<ApiResponse<Void>> approveQueueItem(

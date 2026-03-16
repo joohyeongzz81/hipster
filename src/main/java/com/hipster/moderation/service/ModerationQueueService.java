@@ -1,8 +1,8 @@
 package com.hipster.moderation.service;
 
-import com.hipster.artist.domain.Artist;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hipster.artist.repository.ArtistRepository;
-import com.hipster.genre.domain.Genre;
 import com.hipster.genre.repository.GenreRepository;
 import com.hipster.global.dto.response.PaginationDto;
 import com.hipster.global.exception.BadRequestException;
@@ -21,8 +21,8 @@ import com.hipster.moderation.dto.response.ModerationSubmitResponse;
 import com.hipster.moderation.dto.response.UserModerationSubmissionResponse;
 import com.hipster.global.dto.response.PagedResponse;
 import com.hipster.moderation.repository.ModerationQueueRepository;
-import com.hipster.release.domain.Release;
 import com.hipster.release.repository.ReleaseRepository;
+import com.hipster.review.repository.ReviewRepository;
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
 import jakarta.persistence.criteria.Predicate;
@@ -36,6 +36,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -48,17 +50,23 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ModerationQueueService {
 
+    private static final Duration CLAIM_TTL = Duration.ofMinutes(30);
+
     private final ModerationQueueRepository moderationQueueRepository;
     private final SpamDetectionService spamDetectionService;
     private final UserRepository userRepository;
     private final ReleaseRepository releaseRepository;
     private final ArtistRepository artistRepository;
     private final GenreRepository genreRepository;
+    private final ReviewRepository reviewRepository;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public ModerationSubmitResponse submit(final ModerationSubmitRequest request, final Long submitterId) {
+        final String submissionSnapshot = serializeSnapshot(request.submissionSnapshot());
+
         if (spamDetectionService.detectSpamPattern(submitterId, request.entityType(), request.entityId(), request.metaComment())) {
-            return handleSpamSubmission(request, submitterId);
+            return handleSpamSubmission(request, submitterId, submissionSnapshot);
         }
 
         final ModerationQueue queueItem = ModerationQueue.builder()
@@ -67,6 +75,7 @@ public class ModerationQueueService {
                 .submitterId(submitterId)
                 .metaComment(request.metaComment())
                 .priority(2)
+                .submissionSnapshot(submissionSnapshot)
                 .build();
 
         final User user = userRepository.findById(submitterId)
@@ -75,8 +84,8 @@ public class ModerationQueueService {
         moderationQueueRepository.save(queueItem);
 
         if (isEligibleForAutoApproval(request, user)) {
+            applyApprovalEntityState(queueItem);
             queueItem.autoApprove();
-            publishEntity(queueItem);
             moderationQueueRepository.save(queueItem);
             log.info("Auto-approved submission {} for User {}", queueItem.getId(), submitterId);
         }
@@ -86,9 +95,11 @@ public class ModerationQueueService {
         return new ModerationSubmitResponse(queueItem.getId(), queueItem.getStatus(), "Submission received.", estimatedTime);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ModerationQueueListResponse getModerationQueue(final ModerationStatus status, final Integer priority,
                                                           final int page, final int limit) {
+        releaseExpiredClaims();
+
         final ModerationStatus effectiveStatus = (status != null) ? status : ModerationStatus.PENDING;
 
         final Sort sort = Sort.by(Sort.Direction.ASC, "priority", "submittedAt");
@@ -131,18 +142,16 @@ public class ModerationQueueService {
     @Transactional
     public ModerationQueueItemResponse claimQueueItem(final Long queueId, final Long moderatorId) {
         final ModerationQueue item = findQueueItemOrThrow(queueId);
+        final LocalDateTime now = LocalDateTime.now();
 
-        if (item.getStatus() == ModerationStatus.APPROVED
-                || item.getStatus() == ModerationStatus.REJECTED
-                || item.getStatus() == ModerationStatus.AUTO_APPROVED) {
-            throw new BadRequestException(ErrorCode.MODERATION_ALREADY_PROCESSED);
-        }
+        validateNotAlreadyProcessed(item);
+        releaseClaimIfExpired(item, now);
 
         if (item.getStatus() == ModerationStatus.UNDER_REVIEW) {
             validateNotClaimedByOther(item, moderatorId);
         }
 
-        item.assignModerator(moderatorId);
+        item.assignModerator(moderatorId, now, now.plus(CLAIM_TTL));
         moderationQueueRepository.save(item);
 
         final User submitter = userRepository.findById(item.getSubmitterId()).orElse(null);
@@ -152,25 +161,75 @@ public class ModerationQueueService {
     @Transactional
     public void approve(final Long queueId, final Long moderatorId, final String comment) {
         final ModerationQueue item = findQueueItemOrThrow(queueId);
+        validateNotAlreadyProcessed(item);
+        persistExpiredClaimReleaseIfNeeded(item);
         validateModeratorOwnership(item, moderatorId);
 
+        applyApprovalEntityState(item);
         item.approve(comment);
-        publishEntity(item);
         moderationQueueRepository.save(item);
     }
 
     @Transactional
     public void reject(final Long queueId, final Long moderatorId, final RejectionReason reason, final String comment) {
         final ModerationQueue item = findQueueItemOrThrow(queueId);
+        validateNotAlreadyProcessed(item);
+        persistExpiredClaimReleaseIfNeeded(item);
         validateModeratorOwnership(item, moderatorId);
 
+        applyRejectionEntityState(item);
         item.reject(reason, comment);
+        moderationQueueRepository.save(item);
+    }
+
+    @Transactional
+    public void unclaimQueueItem(final Long queueId, final Long moderatorId) {
+        final ModerationQueue item = findQueueItemOrThrow(queueId);
+        validateNotAlreadyProcessed(item);
+        persistExpiredClaimReleaseIfNeeded(item);
+        validateModeratorOwnership(item, moderatorId);
+
+        item.releaseClaim();
         moderationQueueRepository.save(item);
     }
 
     private ModerationQueue findQueueItemOrThrow(final Long queueId) {
         return moderationQueueRepository.findById(queueId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.MODERATION_ITEM_NOT_FOUND));
+    }
+
+    private void validateNotAlreadyProcessed(final ModerationQueue item) {
+        if (item.isProcessed()) {
+            throw new BadRequestException(ErrorCode.MODERATION_ALREADY_PROCESSED);
+        }
+    }
+
+    private void releaseExpiredClaims() {
+        final List<ModerationQueue> expiredClaims = moderationQueueRepository
+                .findExpiredClaims(ModerationStatus.UNDER_REVIEW, LocalDateTime.now());
+
+        if (expiredClaims.isEmpty()) {
+            return;
+        }
+
+        expiredClaims.forEach(ModerationQueue::releaseClaim);
+        moderationQueueRepository.saveAll(expiredClaims);
+        log.info("Released {} expired moderation claims.", expiredClaims.size());
+    }
+
+    private void persistExpiredClaimReleaseIfNeeded(final ModerationQueue item) {
+        if (releaseClaimIfExpired(item, LocalDateTime.now())) {
+            moderationQueueRepository.save(item);
+        }
+    }
+
+    private boolean releaseClaimIfExpired(final ModerationQueue item, final LocalDateTime referenceTime) {
+        if (!item.isClaimExpired(referenceTime)) {
+            return false;
+        }
+
+        item.releaseClaim();
+        return true;
     }
 
     private void validateModeratorOwnership(final ModerationQueue item, final Long moderatorId) {
@@ -188,14 +247,17 @@ public class ModerationQueueService {
         }
     }
 
-    private ModerationSubmitResponse handleSpamSubmission(final ModerationSubmitRequest request, final Long submitterId) {
+    private ModerationSubmitResponse handleSpamSubmission(final ModerationSubmitRequest request, final Long submitterId,
+                                                          final String submissionSnapshot) {
         final ModerationQueue spamItem = ModerationQueue.builder()
                 .entityType(request.entityType())
                 .entityId(request.entityId())
                 .submitterId(submitterId)
                 .metaComment(request.metaComment())
                 .priority(2)
+                .submissionSnapshot(submissionSnapshot)
                 .build();
+        applyRejectionEntityState(spamItem);
         spamItem.reject(RejectionReason.SPAM_ABUSE, "Automated spam detection.");
         moderationQueueRepository.save(spamItem);
         return new ModerationSubmitResponse(spamItem.getId(), ModerationStatus.REJECTED, "Submission rejected due to spam suspicion.", "N/A");
@@ -225,13 +287,60 @@ public class ModerationQueueService {
         };
     }
 
-    private void publishEntity(final ModerationQueue item) {
-        if (item.getEntityId() == null) return;
+    private void applyApprovalEntityState(final ModerationQueue item) {
+        final Long entityId = requireEntityId(item);
+
         switch (item.getEntityType()) {
-            case RELEASE -> releaseRepository.findById(item.getEntityId()).ifPresent(Release::approve);
-            case ARTIST  -> artistRepository.findById(item.getEntityId()).ifPresent(Artist::approve);
-            case GENRE   -> genreRepository.findById(item.getEntityId()).ifPresent(Genre::approve);
-            default      -> log.warn("Auto-publish not implemented for type: {}", item.getEntityType());
+            case RELEASE -> releaseRepository.findById(entityId)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.RELEASE_NOT_FOUND))
+                    .approve();
+            case ARTIST -> artistRepository.findById(entityId)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.ARTIST_NOT_FOUND))
+                    .approve();
+            case GENRE -> genreRepository.findById(entityId)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.GENRE_NOT_FOUND))
+                    .approve();
+            case REVIEW -> reviewRepository.findById(entityId)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.REVIEW_NOT_FOUND))
+                    .publish();
+        }
+    }
+
+    private void applyRejectionEntityState(final ModerationQueue item) {
+        final Long entityId = requireEntityId(item);
+
+        switch (item.getEntityType()) {
+            case RELEASE -> releaseRepository.findById(entityId)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.RELEASE_NOT_FOUND))
+                    .delete();
+            case ARTIST -> artistRepository.findById(entityId)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.ARTIST_NOT_FOUND))
+                    .delete();
+            case GENRE -> genreRepository.findById(entityId)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.GENRE_NOT_FOUND))
+                    .delete();
+            case REVIEW -> reviewRepository.findById(entityId)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.REVIEW_NOT_FOUND))
+                    .unpublish();
+        }
+    }
+
+    private Long requireEntityId(final ModerationQueue item) {
+        if (item.getEntityId() == null) {
+            throw new BadRequestException(ErrorCode.BAD_REQUEST);
+        }
+        return item.getEntityId();
+    }
+
+    private String serializeSnapshot(final Object snapshot) {
+        if (snapshot == null) {
+            return null;
+        }
+
+        try {
+            return objectMapper.writeValueAsString(snapshot);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to serialize moderation snapshot.", exception);
         }
     }
 }

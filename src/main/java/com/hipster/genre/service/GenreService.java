@@ -37,10 +37,21 @@ public class GenreService {
         final ModerationSubmitRequest modRequest = new ModerationSubmitRequest(
                 EntityType.GENRE,
                 genre.getId(),
-                request.metaComment()
+                request.metaComment(),
+                buildGenreSnapshot(request, genre)
         );
 
         return moderationQueueService.submit(modRequest, submitterId);
+    }
+
+    private Map<String, Object> buildGenreSnapshot(final CreateGenreRequest request, final Genre genre) {
+        final Map<String, Object> snapshot = new HashMap<>();
+        snapshot.put("genreId", genre.getId());
+        snapshot.put("name", request.name());
+        snapshot.put("parentId", request.parentId());
+        snapshot.put("description", request.description());
+        snapshot.put("metaComment", request.metaComment());
+        return snapshot;
     }
 
     public List<GenreNodeResponse> getGenreTree() {

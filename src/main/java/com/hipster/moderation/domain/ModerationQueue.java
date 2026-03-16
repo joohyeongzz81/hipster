@@ -56,11 +56,20 @@ public class ModerationQueue {
     @Column(nullable = true, columnDefinition = "TEXT")
     private String moderatorComment;
 
+    @Column(nullable = true, columnDefinition = "TEXT")
+    private String submissionSnapshot;
+
     @Column(nullable = false)
     private LocalDateTime submittedAt;
 
     @Column(nullable = true)
     private LocalDateTime processedAt;
+
+    @Column(nullable = true)
+    private LocalDateTime claimedAt;
+
+    @Column(nullable = true)
+    private LocalDateTime claimExpiresAt;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
@@ -72,11 +81,12 @@ public class ModerationQueue {
 
     @Builder
     public ModerationQueue(final EntityType entityType, final Long entityId, final Long submitterId,
-                           final String metaComment, final Integer priority) {
+                           final String metaComment, final Integer priority, final String submissionSnapshot) {
         this.entityType = entityType;
         this.entityId = entityId;
         this.submitterId = submitterId;
         this.metaComment = metaComment;
+        this.submissionSnapshot = submissionSnapshot;
         this.submittedAt = LocalDateTime.now();
         if (priority != null) {
             this.priority = priority;
@@ -84,9 +94,34 @@ public class ModerationQueue {
     }
 
     // Business Methods
-    public void assignModerator(final Long moderatorId) {
+    public void assignModerator(final Long moderatorId, final LocalDateTime claimedAt, final LocalDateTime claimExpiresAt) {
         this.moderatorId = moderatorId;
         this.status = ModerationStatus.UNDER_REVIEW;
+        this.claimedAt = claimedAt;
+        this.claimExpiresAt = claimExpiresAt;
+    }
+
+    public boolean isClaimExpired(final LocalDateTime referenceTime) {
+        if (this.status != ModerationStatus.UNDER_REVIEW) {
+            return false;
+        }
+        if (this.claimExpiresAt == null) {
+            return true;
+        }
+        return !this.claimExpiresAt.isAfter(referenceTime);
+    }
+
+    public void releaseClaim() {
+        this.moderatorId = null;
+        this.status = ModerationStatus.PENDING;
+        this.claimedAt = null;
+        this.claimExpiresAt = null;
+    }
+
+    public boolean isProcessed() {
+        return this.status == ModerationStatus.APPROVED
+                || this.status == ModerationStatus.REJECTED
+                || this.status == ModerationStatus.AUTO_APPROVED;
     }
 
     public void approve() {

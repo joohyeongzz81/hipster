@@ -71,6 +71,14 @@ public class Review {
         this.isPublished = isPublished;
     }
 
+    public void publish() {
+        this.isPublished = true;
+    }
+
+    public void unpublish() {
+        this.isPublished = false;
+    }
+
     public void delete() {
         this.status = ReviewStatus.DELETED;
     }
