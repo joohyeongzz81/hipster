@@ -23,9 +23,17 @@ public record ModerationQueueItemResponse(
         LocalDateTime submittedAt,
         LocalDateTime claimedAt,
         LocalDateTime claimExpiresAt,
-        Long daysSinceSubmit
+        Long daysSinceSubmit,
+        Long submittedAgeHours,
+        Boolean slaBreached
 ) {
-    public static ModerationQueueItemResponse of(final ModerationQueue item, final User submitter) {
+    public static ModerationQueueItemResponse of(final ModerationQueue item,
+                                                 final User submitter,
+                                                 final LocalDateTime referenceTime,
+                                                 final long slaTargetHours) {
+        final long daysSinceSubmit = ChronoUnit.DAYS.between(item.getSubmittedAt(), referenceTime);
+        final long submittedAgeHours = ChronoUnit.HOURS.between(item.getSubmittedAt(), referenceTime);
+        final boolean slaBreached = isOpenItem(item) && submittedAgeHours >= slaTargetHours;
         return new ModerationQueueItemResponse(
                 item.getId(),
                 item.getEntityType(),
@@ -41,7 +49,14 @@ public record ModerationQueueItemResponse(
                 item.getSubmittedAt(),
                 item.getClaimedAt(),
                 item.getClaimExpiresAt(),
-                ChronoUnit.DAYS.between(item.getSubmittedAt(), LocalDateTime.now())
+                daysSinceSubmit,
+                submittedAgeHours,
+                slaBreached
         );
+    }
+
+    private static boolean isOpenItem(final ModerationQueue item) {
+        return item.getStatus() == ModerationStatus.PENDING
+                || item.getStatus() == ModerationStatus.UNDER_REVIEW;
     }
 }

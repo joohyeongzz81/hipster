@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,6 +21,11 @@ public interface ModerationQueueRepository extends JpaRepository<ModerationQueue
     List<ModerationQueue> findByStatusOrderByPriorityAscSubmittedAtAsc(ModerationStatus status, Pageable pageable);
 
     Long countByStatusAndPriority(ModerationStatus status, Integer priority);
+
+    Long countByStatus(ModerationStatus status);
+
+    Long countByStatusInAndSubmittedAtLessThanEqual(Collection<ModerationStatus> statuses,
+                                                    LocalDateTime submittedAt);
 
     Page<ModerationQueue> findBySubmitterIdOrderBySubmittedAtDesc(Long submitterId, Pageable pageable);
 

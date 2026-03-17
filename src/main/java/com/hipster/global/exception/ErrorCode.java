@@ -50,6 +50,9 @@ public enum ErrorCode {
     MODERATION_NOT_CLAIMED(6001, HttpStatus.FORBIDDEN, "먼저 해당 항목을 담당해야 합니다."),
     MODERATION_CLAIMED_BY_OTHER(6002, HttpStatus.FORBIDDEN, "다른 모더레이터가 담당 중인 항목입니다."),
     MODERATION_ALREADY_PROCESSED(6003, HttpStatus.BAD_REQUEST, "이미 처리 완료된 모더레이션 항목입니다."),
+    MODERATION_REASSIGN_NOT_ALLOWED(6004, HttpStatus.BAD_REQUEST, "현재 항목은 재할당할 수 없습니다."),
+    MODERATION_REASSIGN_TARGET_INVALID(6005, HttpStatus.BAD_REQUEST, "재할당 대상은 모더레이터 또는 관리자여야 합니다."),
+    MODERATION_REASSIGN_SAME_TARGET(6006, HttpStatus.BAD_REQUEST, "현재 담당자와 동일한 사용자에게 재할당할 수 없습니다."),
 
     // 7xxx: Rating Domain Custom Errors
     INVALID_RATING_SCORE(7000, HttpStatus.BAD_REQUEST, "점수는 0.5~5.0 범위의 0.5 단위여야 합니다."),
@@ -57,7 +60,13 @@ public enum ErrorCode {
 
     // 8xxx: Review Domain Custom Errors
     REVIEW_NOT_FOUND(8000, HttpStatus.NOT_FOUND, "리뷰를 찾을 수 없습니다."),
-    REVIEW_NOT_OWNER(8001, HttpStatus.FORBIDDEN, "리뷰 작성자만 수정/삭제할 수 있습니다.");
+    REVIEW_NOT_OWNER(8001, HttpStatus.FORBIDDEN, "리뷰 작성자만 수정/삭제할 수 있습니다."),
+
+    // 9xxx: Reward Domain Custom Errors
+    REWARD_APPROVAL_NOT_ELIGIBLE(9000, HttpStatus.BAD_REQUEST, "현재 승인 건은 적립 대상으로 처리할 수 없습니다."),
+    REWARD_ACCRUAL_NOT_FOUND(9001, HttpStatus.NOT_FOUND, "해당 승인 건의 적립 기록을 찾을 수 없습니다."),
+    REWARD_REVERSAL_NOT_ALLOWED(9002, HttpStatus.BAD_REQUEST, "현재 적립 기록은 취소 적립할 수 없습니다."),
+    REWARD_CAMPAIGN_NOT_FOUND(9003, HttpStatus.NOT_FOUND, "기본 적립 캠페인을 찾을 수 없습니다.");
 
     private final int code;
     private final HttpStatus status;

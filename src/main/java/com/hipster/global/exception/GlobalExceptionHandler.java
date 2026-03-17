@@ -4,6 +4,7 @@ import com.hipster.global.dto.response.ApiResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -32,6 +33,15 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(
                 ApiResponse.of(e.getErrorCode().getCode(), e.getErrorCode().getMessage(), null),
                 e.getErrorCode().getStatus());
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleObjectOptimisticLockingFailureException(
+            final ObjectOptimisticLockingFailureException e) {
+        log.warn("Handle ObjectOptimisticLockingFailureException", e);
+        return new ResponseEntity<>(
+                ApiResponse.of(ErrorCode.CONFLICT.getCode(), ErrorCode.CONFLICT.getMessage(), null),
+                ErrorCode.CONFLICT.getStatus());
     }
 
     @ExceptionHandler(Exception.class)

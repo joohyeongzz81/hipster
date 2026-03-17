@@ -1,5 +1,6 @@
 package com.hipster.moderation.service;
 
+import com.hipster.auth.UserRole;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hipster.artist.repository.ArtistRepository;
 import com.hipster.genre.repository.GenreRepository;
@@ -8,13 +9,19 @@ import com.hipster.global.exception.BadRequestException;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.ForbiddenException;
 import com.hipster.global.exception.NotFoundException;
+import com.hipster.moderation.domain.ModerationAuditEventType;
+import com.hipster.moderation.domain.ModerationAuditTrail;
 import com.hipster.moderation.domain.EntityType;
 import com.hipster.moderation.domain.ModerationQueue;
 import com.hipster.moderation.domain.ModerationStatus;
 import com.hipster.moderation.domain.RejectionReason;
 import com.hipster.moderation.dto.response.ModerationQueueItemResponse;
+import com.hipster.moderation.dto.response.ModerationSubmitResponse;
 import com.hipster.moderation.dto.response.UserModerationSubmissionResponse;
+import com.hipster.moderation.metrics.ModerationMetricsRecorder;
+import com.hipster.moderation.repository.ModerationAuditTrailRepository;
 import com.hipster.moderation.repository.ModerationQueueRepository;
+import com.hipster.reward.service.RewardLedgerService;
 import com.hipster.release.domain.Release;
 import com.hipster.release.domain.ReleaseType;
 import com.hipster.release.repository.ReleaseRepository;
@@ -23,8 +30,10 @@ import com.hipster.review.repository.ReviewRepository;
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -32,6 +41,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -46,7 +59,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,6 +72,15 @@ class ModerationQueueServiceTest {
 
     @Mock
     private ModerationQueueRepository moderationQueueRepository;
+
+    @Mock
+    private ModerationAuditTrailRepository moderationAuditTrailRepository;
+
+    @Mock
+    private ModerationMetricsRecorder moderationMetricsRecorder;
+
+    @Mock
+    private TransactionTemplate transactionTemplate;
 
     @Mock
     private SpamDetectionService spamDetectionService;
@@ -77,7 +101,18 @@ class ModerationQueueServiceTest {
     private ReviewRepository reviewRepository;
 
     @Mock
+    private RewardLedgerService rewardLedgerService;
+
+    @Mock
     private ObjectMapper objectMapper;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
+    }
 
     @Test
     @DisplayName("사용자 모더레이션 요청 목록 조회 - 정상 동작")
@@ -163,6 +198,29 @@ class ModerationQueueServiceTest {
         assertThat(queueItem.getClaimExpiresAt()).isNotNull();
         assertThat(Duration.between(queueItem.getClaimedAt(), queueItem.getClaimExpiresAt())).isEqualTo(Duration.ofMinutes(30));
         verify(moderationQueueRepository).save(queueItem);
+
+        ArgumentCaptor<ModerationAuditTrail> auditCaptor = ArgumentCaptor.forClass(ModerationAuditTrail.class);
+        verify(moderationAuditTrailRepository, times(2)).save(auditCaptor.capture());
+        List<ModerationAuditTrail> audits = auditCaptor.getAllValues();
+
+        ModerationAuditTrail leaseExpiredAudit = audits.get(0);
+        assertThat(leaseExpiredAudit.getEventType()).isEqualTo(ModerationAuditEventType.LEASE_EXPIRED);
+        assertThat(leaseExpiredAudit.getPreviousStatus()).isEqualTo(ModerationStatus.UNDER_REVIEW);
+        assertThat(leaseExpiredAudit.getCurrentStatus()).isEqualTo(ModerationStatus.PENDING);
+        assertThat(leaseExpiredAudit.getPreviousModeratorId()).isEqualTo(previousModeratorId);
+        assertThat(leaseExpiredAudit.getCurrentModeratorId()).isNull();
+        assertThat(leaseExpiredAudit.getReason()).isEqualTo("LEASE_EXPIRED");
+
+        ModerationAuditTrail claimAudit = audits.get(1);
+        assertThat(claimAudit.getEventType()).isEqualTo(ModerationAuditEventType.CLAIMED);
+        assertThat(claimAudit.getPreviousStatus()).isEqualTo(ModerationStatus.PENDING);
+        assertThat(claimAudit.getCurrentStatus()).isEqualTo(ModerationStatus.UNDER_REVIEW);
+        assertThat(claimAudit.getPreviousModeratorId()).isNull();
+        assertThat(claimAudit.getCurrentModeratorId()).isEqualTo(newModeratorId);
+        assertThat(claimAudit.getReason()).isNull();
+
+        verify(moderationMetricsRecorder).recordAction(ModerationAuditEventType.LEASE_EXPIRED);
+        verify(moderationMetricsRecorder).recordAction(ModerationAuditEventType.CLAIMED);
     }
 
     @Test
@@ -185,6 +243,13 @@ class ModerationQueueServiceTest {
         assertThat(queueItem.getStatus()).isEqualTo(ModerationStatus.PENDING);
         assertThat(queueItem.getModeratorId()).isNull();
         verify(moderationQueueRepository).save(queueItem);
+        verify(moderationAuditTrailRepository).save(argThat(audit ->
+                audit.getEventType() == ModerationAuditEventType.LEASE_EXPIRED
+                        && audit.getPreviousStatus() == ModerationStatus.UNDER_REVIEW
+                        && audit.getCurrentStatus() == ModerationStatus.PENDING
+                        && moderatorId.equals(audit.getPreviousModeratorId())
+                        && audit.getCurrentModeratorId() == null
+        ));
     }
 
     @Test
@@ -207,30 +272,258 @@ class ModerationQueueServiceTest {
         assertThat(queueItem.getClaimedAt()).isNull();
         assertThat(queueItem.getClaimExpiresAt()).isNull();
         verify(moderationQueueRepository).save(queueItem);
+        verify(moderationAuditTrailRepository).save(argThat(audit ->
+                audit.getEventType() == ModerationAuditEventType.UNCLAIMED
+                        && moderatorId.equals(audit.getActorId())
+                        && audit.getPreviousStatus() == ModerationStatus.UNDER_REVIEW
+                        && audit.getCurrentStatus() == ModerationStatus.PENDING
+        ));
     }
 
     @Test
-    @DisplayName("대기열 조회 전에 만료된 claim 을 자동 회수한다")
-    void getModerationQueue_ReleasesExpiredClaimsBeforeListing() {
-        Long submitterId = 15L;
-        Long moderatorId = 34L;
-        LocalDateTime claimedAt = LocalDateTime.now().minusHours(3);
+    @DisplayName("현재 점유자는 다른 모더레이터에게 재할당할 수 있다")
+    void reassignQueueItem_Owner_Success() {
+        Long queueId = 9L;
+        Long submitterId = 22L;
+        Long currentModeratorId = 40L;
+        Long targetModeratorId = 41L;
 
-        ModerationQueue expiredItem = queueItem(EntityType.RELEASE, 105L, submitterId, "Release before listing");
+        ModerationQueue queueItem = queueItem(EntityType.RELEASE, 108L, submitterId, "Reassign by owner");
+        queueItem.assignModerator(currentModeratorId, LocalDateTime.now().minusMinutes(5), LocalDateTime.now().plusMinutes(25));
+
+        User targetModerator = userWithRole(targetModeratorId, UserRole.MODERATOR);
+
+        given(moderationQueueRepository.findById(queueId)).willReturn(Optional.of(queueItem));
+        given(userRepository.findById(targetModeratorId)).willReturn(Optional.of(targetModerator));
+        given(userRepository.findById(submitterId)).willReturn(Optional.empty());
+
+        ModerationQueueItemResponse response = moderationQueueService.reassignQueueItem(
+                queueId, currentModeratorId, UserRole.MODERATOR, targetModeratorId);
+
+        assertThat(response.status()).isEqualTo(ModerationStatus.UNDER_REVIEW);
+        assertThat(queueItem.getModeratorId()).isEqualTo(targetModeratorId);
+        assertThat(queueItem.getClaimedAt()).isNotNull();
+        assertThat(queueItem.getClaimExpiresAt()).isNotNull();
+        assertThat(Duration.between(queueItem.getClaimedAt(), queueItem.getClaimExpiresAt())).isEqualTo(Duration.ofMinutes(30));
+        verify(moderationQueueRepository).save(queueItem);
+        verify(moderationAuditTrailRepository).save(argThat(audit ->
+                audit.getEventType() == ModerationAuditEventType.REASSIGNED
+                        && currentModeratorId.equals(audit.getActorId())
+                        && audit.getPreviousStatus() == ModerationStatus.UNDER_REVIEW
+                        && audit.getCurrentStatus() == ModerationStatus.UNDER_REVIEW
+                        && currentModeratorId.equals(audit.getPreviousModeratorId())
+                        && targetModeratorId.equals(audit.getCurrentModeratorId())
+        ));
+    }
+
+    @Test
+    @DisplayName("관리자는 다른 운영자가 점유한 항목도 재할당할 수 있다")
+    void reassignQueueItem_Admin_Success() {
+        Long queueId = 10L;
+        Long submitterId = 23L;
+        Long currentModeratorId = 42L;
+        Long adminId = 43L;
+        Long targetModeratorId = 44L;
+
+        ModerationQueue queueItem = queueItem(EntityType.RELEASE, 109L, submitterId, "Reassign by admin");
+        queueItem.assignModerator(currentModeratorId, LocalDateTime.now().minusMinutes(10), LocalDateTime.now().plusMinutes(20));
+
+        User targetModerator = userWithRole(targetModeratorId, UserRole.ADMIN);
+
+        given(moderationQueueRepository.findById(queueId)).willReturn(Optional.of(queueItem));
+        given(userRepository.findById(targetModeratorId)).willReturn(Optional.of(targetModerator));
+        given(userRepository.findById(submitterId)).willReturn(Optional.empty());
+
+        moderationQueueService.reassignQueueItem(queueId, adminId, UserRole.ADMIN, targetModeratorId);
+
+        assertThat(queueItem.getModeratorId()).isEqualTo(targetModeratorId);
+        verify(moderationQueueRepository).save(queueItem);
+        verify(moderationAuditTrailRepository).save(argThat(audit ->
+                audit.getEventType() == ModerationAuditEventType.REASSIGNED
+                        && adminId.equals(audit.getActorId())
+                        && currentModeratorId.equals(audit.getPreviousModeratorId())
+                        && targetModeratorId.equals(audit.getCurrentModeratorId())
+        ));
+    }
+
+    @Test
+    @DisplayName("점유하지 않은 모더레이터는 다른 사람의 항목을 재할당할 수 없다")
+    void reassignQueueItem_NotOwnerModerator_ThrowsForbidden() {
+        Long queueId = 11L;
+        Long submitterId = 24L;
+        Long currentModeratorId = 45L;
+        Long anotherModeratorId = 46L;
+        Long targetModeratorId = 47L;
+
+        ModerationQueue queueItem = queueItem(EntityType.RELEASE, 110L, submitterId, "Forbidden reassign");
+        queueItem.assignModerator(currentModeratorId, LocalDateTime.now().minusMinutes(5), LocalDateTime.now().plusMinutes(25));
+
+        given(moderationQueueRepository.findById(queueId)).willReturn(Optional.of(queueItem));
+
+        assertThatThrownBy(() -> moderationQueueService.reassignQueueItem(
+                queueId, anotherModeratorId, UserRole.MODERATOR, targetModeratorId))
+                .isInstanceOfSatisfying(ForbiddenException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.MODERATION_CLAIMED_BY_OTHER));
+
+        verify(moderationQueueRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("재할당 대상은 모더레이터 또는 관리자여야 한다")
+    void reassignQueueItem_TargetWithoutModerationRole_ThrowsBadRequest() {
+        Long queueId = 12L;
+        Long submitterId = 25L;
+        Long currentModeratorId = 48L;
+        Long targetUserId = 49L;
+
+        ModerationQueue queueItem = queueItem(EntityType.RELEASE, 111L, submitterId, "Invalid target role");
+        queueItem.assignModerator(currentModeratorId, LocalDateTime.now().minusMinutes(5), LocalDateTime.now().plusMinutes(25));
+
+        User targetUser = userWithRole(targetUserId, UserRole.USER);
+
+        given(moderationQueueRepository.findById(queueId)).willReturn(Optional.of(queueItem));
+        given(userRepository.findById(targetUserId)).willReturn(Optional.of(targetUser));
+
+        assertThatThrownBy(() -> moderationQueueService.reassignQueueItem(
+                queueId, currentModeratorId, UserRole.MODERATOR, targetUserId))
+                .isInstanceOfSatisfying(BadRequestException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.MODERATION_REASSIGN_TARGET_INVALID));
+
+        verify(moderationQueueRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("현재 담당자와 동일한 사용자에게는 재할당할 수 없다")
+    void reassignQueueItem_SameTarget_ThrowsBadRequest() {
+        Long queueId = 13L;
+        Long submitterId = 26L;
+        Long currentModeratorId = 50L;
+
+        ModerationQueue queueItem = queueItem(EntityType.RELEASE, 112L, submitterId, "Same target");
+        queueItem.assignModerator(currentModeratorId, LocalDateTime.now().minusMinutes(5), LocalDateTime.now().plusMinutes(25));
+
+        given(moderationQueueRepository.findById(queueId)).willReturn(Optional.of(queueItem));
+
+        assertThatThrownBy(() -> moderationQueueService.reassignQueueItem(
+                queueId, currentModeratorId, UserRole.MODERATOR, currentModeratorId))
+                .isInstanceOfSatisfying(BadRequestException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.MODERATION_REASSIGN_SAME_TARGET));
+
+        verify(moderationQueueRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("만료된 항목은 재할당 전에 만료 보정이 적용된 뒤 거절된다")
+    void reassignQueueItem_ExpiredClaim_ThrowsBadRequest() {
+        Long queueId = 14L;
+        Long submitterId = 27L;
+        Long currentModeratorId = 51L;
+        Long targetModeratorId = 52L;
+        LocalDateTime claimedAt = LocalDateTime.now().minusHours(1);
+
+        ModerationQueue queueItem = queueItem(EntityType.RELEASE, 113L, submitterId, "Expired reassign");
+        queueItem.assignModerator(currentModeratorId, claimedAt, claimedAt.plusMinutes(30));
+
+        given(moderationQueueRepository.findById(queueId)).willReturn(Optional.of(queueItem));
+
+        assertThatThrownBy(() -> moderationQueueService.reassignQueueItem(
+                queueId, currentModeratorId, UserRole.MODERATOR, targetModeratorId))
+                .isInstanceOfSatisfying(BadRequestException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.MODERATION_REASSIGN_NOT_ALLOWED));
+
+        assertThat(queueItem.getStatus()).isEqualTo(ModerationStatus.PENDING);
+        assertThat(queueItem.getModeratorId()).isNull();
+        verify(moderationQueueRepository).save(queueItem);
+        verify(moderationAuditTrailRepository).save(argThat(audit ->
+                audit.getEventType() == ModerationAuditEventType.LEASE_EXPIRED
+                        && currentModeratorId.equals(audit.getPreviousModeratorId())
+                        && audit.getCurrentModeratorId() == null
+        ));
+    }
+
+    @Test
+    @DisplayName("대기열 조회는 전역 만료 claim 정리를 수행하지 않는다")
+    void getModerationQueue_DoesNotReleaseExpiredClaimsBeforeListing() {
+        Long submitterId = 15L;
+        ModerationQueue pendingItem = queueItem(EntityType.RELEASE, 105L, submitterId, "Old pending");
+        ModerationQueue underReviewItem = queueItem(EntityType.RELEASE, 106L, submitterId, "Fresh under review");
+        underReviewItem.assignModerator(99L, LocalDateTime.now().minusMinutes(10), LocalDateTime.now().plusMinutes(20));
+        ReflectionTestUtils.setField(pendingItem, "submittedAt", LocalDateTime.now().minusHours(48));
+        ReflectionTestUtils.setField(underReviewItem, "submittedAt", LocalDateTime.now().minusHours(2));
+
+        given(moderationQueueRepository.findAll(org.mockito.ArgumentMatchers.<Specification<ModerationQueue>>any(), any(Pageable.class)))
+                .willReturn(new PageImpl<>(List.of(pendingItem, underReviewItem)));
+        given(moderationQueueRepository.countByStatus(ModerationStatus.PENDING)).willReturn(1L);
+        given(moderationQueueRepository.countByStatus(ModerationStatus.UNDER_REVIEW)).willReturn(1L);
+        given(moderationQueueRepository.countByStatusInAndSubmittedAtLessThanEqual(any(), any(LocalDateTime.class)))
+                .willReturn(1L);
+        given(userRepository.findAllById(any())).willReturn(List.of());
+
+        var response = moderationQueueService.getModerationQueue(null, null, 1, 20);
+
+        assertThat(response.totalPending()).isEqualTo(1L);
+        assertThat(response.totalUnderReview()).isEqualTo(1L);
+        assertThat(response.totalSlaBreached()).isEqualTo(1L);
+        assertThat(response.slaTargetHours()).isEqualTo(24L);
+        assertThat(response.items()).hasSize(2);
+        assertThat(response.items().get(0).slaBreached()).isTrue();
+        assertThat(response.items().get(0).submittedAgeHours()).isEqualTo(48L);
+        assertThat(response.items().get(1).slaBreached()).isFalse();
+        assertThat(response.items().get(1).submittedAgeHours()).isEqualTo(2L);
+
+        verify(moderationQueueRepository, never()).findExpiredClaims(any(), any(LocalDateTime.class));
+        verify(moderationQueueRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("만료 claim 회수 작업은 요청 유입 없이 만료된 점유를 정리한다")
+    void releaseExpiredClaims_ReleasesExpiredItems() {
+        Long submitterId = 20L;
+        Long moderatorId = 38L;
+        LocalDateTime claimedAt = LocalDateTime.now().minusHours(2);
+
+        ModerationQueue expiredItem = queueItem(EntityType.RELEASE, 106L, submitterId, "Release by scheduler");
         expiredItem.assignModerator(moderatorId, claimedAt, claimedAt.plusMinutes(30));
 
         given(moderationQueueRepository.findExpiredClaims(eq(ModerationStatus.UNDER_REVIEW), any(LocalDateTime.class)))
                 .willReturn(List.of(expiredItem));
-        given(moderationQueueRepository.findAll(org.mockito.ArgumentMatchers.<Specification<ModerationQueue>>any(), any(Pageable.class)))
-                .willReturn(new PageImpl<>(List.of()));
-        given(moderationQueueRepository.count(org.mockito.ArgumentMatchers.<Specification<ModerationQueue>>any())).willReturn(0L);
-        given(userRepository.findAllById(any())).willReturn(List.of());
 
-        moderationQueueService.getModerationQueue(null, null, 1, 20);
+        int releasedCount = moderationQueueService.releaseExpiredClaims();
 
+        assertThat(releasedCount).isEqualTo(1);
         assertThat(expiredItem.getStatus()).isEqualTo(ModerationStatus.PENDING);
         assertThat(expiredItem.getModeratorId()).isNull();
-        verify(moderationQueueRepository).saveAll(List.of(expiredItem));
+        verify(moderationQueueRepository).saveAndFlush(expiredItem);
+        verify(moderationAuditTrailRepository).save(argThat(audit ->
+                audit.getEventType() == ModerationAuditEventType.LEASE_EXPIRED
+                        && audit.getPreviousStatus() == ModerationStatus.UNDER_REVIEW
+                        && audit.getCurrentStatus() == ModerationStatus.PENDING
+                        && moderatorId.equals(audit.getPreviousModeratorId())
+                        && audit.getCurrentModeratorId() == null
+        ));
+        verify(moderationMetricsRecorder).recordAction(ModerationAuditEventType.LEASE_EXPIRED);
+    }
+
+    @Test
+    @DisplayName("만료 claim 회수 중 동시성 충돌이 나면 해당 항목은 건너뛴다")
+    void releaseExpiredClaims_SkipsOptimisticLockConflict() {
+        Long submitterId = 21L;
+        Long moderatorId = 39L;
+        LocalDateTime claimedAt = LocalDateTime.now().minusHours(2);
+
+        ModerationQueue expiredItem = queueItem(EntityType.RELEASE, 107L, submitterId, "Conflict on release");
+        expiredItem.assignModerator(moderatorId, claimedAt, claimedAt.plusMinutes(30));
+
+        given(moderationQueueRepository.findExpiredClaims(eq(ModerationStatus.UNDER_REVIEW), any(LocalDateTime.class)))
+                .willReturn(List.of(expiredItem));
+        given(moderationQueueRepository.saveAndFlush(expiredItem))
+                .willThrow(new ObjectOptimisticLockingFailureException(ModerationQueue.class, 107L));
+
+        int releasedCount = moderationQueueService.releaseExpiredClaims();
+
+        assertThat(releasedCount).isEqualTo(0);
+        verify(moderationQueueRepository).saveAndFlush(expiredItem);
+        verify(moderationAuditTrailRepository, never()).save(any());
     }
 
     @Test
@@ -258,6 +551,13 @@ class ModerationQueueServiceTest {
         assertThat(review.getIsPublished()).isTrue();
         assertThat(queueItem.getStatus()).isEqualTo(ModerationStatus.APPROVED);
         verify(moderationQueueRepository).save(queueItem);
+        verify(moderationAuditTrailRepository).save(argThat(audit ->
+                audit.getEventType() == ModerationAuditEventType.APPROVED
+                        && moderatorId.equals(audit.getActorId())
+                        && audit.getPreviousStatus() == ModerationStatus.UNDER_REVIEW
+                        && audit.getCurrentStatus() == ModerationStatus.APPROVED
+                        && "Looks good".equals(audit.getComment())
+        ));
     }
 
     @Test
@@ -285,6 +585,14 @@ class ModerationQueueServiceTest {
         assertThat(release.getStatus().name()).isEqualTo("DELETED");
         assertThat(queueItem.getStatus()).isEqualTo(ModerationStatus.REJECTED);
         verify(moderationQueueRepository).save(queueItem);
+        verify(moderationAuditTrailRepository).save(argThat(audit ->
+                audit.getEventType() == ModerationAuditEventType.REJECTED
+                        && moderatorId.equals(audit.getActorId())
+                        && audit.getPreviousStatus() == ModerationStatus.UNDER_REVIEW
+                        && audit.getCurrentStatus() == ModerationStatus.REJECTED
+                        && RejectionReason.INCORRECT_INFORMATION.name().equals(audit.getReason())
+                        && "Rejected".equals(audit.getComment())
+        ));
     }
 
     @Test
@@ -342,6 +650,47 @@ class ModerationQueueServiceTest {
         ));
     }
 
+    @Test
+    @DisplayName("스팸 자동 반려도 moderation audit 와 metrics 에 남는다")
+    void submit_SpamSubmission_RecordsAuditAndMetrics() throws Exception {
+        Long submitterId = 28L;
+        Review review = Review.builder()
+                .userId(submitterId)
+                .releaseId(500L)
+                .content("Spam".repeat(20))
+                .isPublished(true)
+                .build();
+
+        given(objectMapper.writeValueAsString(any())).willReturn("{\"content\":\"Spam Review\"}");
+        given(spamDetectionService.detectSpamPattern(eq(submitterId), eq(EntityType.REVIEW), eq(301L), any()))
+                .willReturn(true);
+        given(reviewRepository.findById(301L)).willReturn(Optional.of(review));
+        given(moderationQueueRepository.save(any(ModerationQueue.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        ModerationSubmitResponse response = moderationQueueService.submit(
+                new com.hipster.moderation.dto.request.ModerationSubmitRequest(
+                        EntityType.REVIEW,
+                        301L,
+                        "Spam submission",
+                        Map.of("content", "Spam Review")
+                ),
+                submitterId
+        );
+
+        assertThat(response.status()).isEqualTo(ModerationStatus.REJECTED);
+        assertThat(review.getIsPublished()).isFalse();
+        verify(moderationAuditTrailRepository).save(argThat(audit ->
+                audit.getEventType() == ModerationAuditEventType.REJECTED
+                        && audit.getActorId() == null
+                        && audit.getPreviousStatus() == ModerationStatus.PENDING
+                        && audit.getCurrentStatus() == ModerationStatus.REJECTED
+                        && RejectionReason.SPAM_ABUSE.name().equals(audit.getReason())
+                        && "Automated spam detection.".equals(audit.getComment())
+        ));
+        verify(moderationMetricsRecorder).recordAction(ModerationAuditEventType.REJECTED);
+    }
+
     private ModerationQueue queueItem(final EntityType entityType, final Long entityId, final Long submitterId,
                                       final String metaComment) {
         return ModerationQueue.builder()
@@ -351,5 +700,16 @@ class ModerationQueueServiceTest {
                 .metaComment(metaComment)
                 .priority(2)
                 .build();
+    }
+
+    private User userWithRole(final Long userId, final UserRole role) {
+        User user = User.builder()
+                .username("moderator-" + userId)
+                .email("moderator-" + userId + "@example.com")
+                .passwordHash("hashed-password")
+                .build();
+        ReflectionTestUtils.setField(user, "id", userId);
+        ReflectionTestUtils.setField(user, "moderationRole", role);
+        return user;
     }
 }

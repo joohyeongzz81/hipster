@@ -7,6 +7,7 @@ import com.hipster.auth.dto.response.CurrentUserInfo;
 import com.hipster.global.dto.response.ApiResponse;
 import com.hipster.moderation.domain.ModerationStatus;
 import com.hipster.moderation.dto.request.ApproveRequest;
+import com.hipster.moderation.dto.request.ReassignRequest;
 import com.hipster.moderation.dto.response.ModerationQueueItemResponse;
 import com.hipster.moderation.dto.response.ModerationQueueListResponse;
 import com.hipster.moderation.dto.request.RejectRequest;
@@ -50,6 +51,22 @@ public class ModerationController {
             @CurrentUser final CurrentUserInfo moderator) {
         moderationQueueService.unclaimQueueItem(id, moderator.userId());
         return ResponseEntity.ok(ApiResponse.of(200, "검토 점유를 해제했습니다.", null));
+    }
+
+    @PostMapping("/queue/{id}/reassign")
+    @RequireRole({UserRole.MODERATOR, UserRole.ADMIN})
+    public ResponseEntity<ApiResponse<ModerationQueueItemResponse>> reassignQueueItem(
+            @PathVariable final Long id,
+            @CurrentUser final CurrentUserInfo currentUser,
+            @RequestBody @Valid final ReassignRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                moderationQueueService.reassignQueueItem(
+                        id,
+                        currentUser.userId(),
+                        currentUser.role(),
+                        request.targetModeratorId()
+                )
+        ));
     }
 
     @PostMapping("/queue/{id}/approve")
