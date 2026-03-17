@@ -38,6 +38,8 @@ out/
 
 ### Documentation ###
 docs/
+/AGENTS.md
+/tools/
 /.agents
 /.gemini
 .agent/workflows/never-run-tests.md
