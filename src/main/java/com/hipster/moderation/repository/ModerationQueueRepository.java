@@ -29,6 +29,9 @@ public interface ModerationQueueRepository extends JpaRepository<ModerationQueue
 
     Page<ModerationQueue> findBySubmitterIdOrderBySubmittedAtDesc(Long submitterId, Pageable pageable);
 
+    List<ModerationQueue> findBySubmitterIdAndStatusInOrderBySubmittedAtDesc(Long submitterId,
+                                                                              Collection<ModerationStatus> statuses);
+
     Optional<ModerationQueue> findByIdAndStatus(Long id, ModerationStatus status);
 
     Long countBySubmitterIdAndSubmittedAtAfter(Long submitterId, java.time.LocalDateTime submittedAt);

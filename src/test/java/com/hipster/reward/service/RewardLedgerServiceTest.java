@@ -14,6 +14,7 @@ import com.hipster.reward.domain.RewardLedgerEntry;
 import com.hipster.reward.domain.RewardLedgerEntryStatus;
 import com.hipster.reward.domain.RewardLedgerEntryType;
 import com.hipster.reward.dto.response.RewardApprovalAccrualResponse;
+import com.hipster.reward.dto.response.UserRewardApprovalAccrualListResponse;
 import com.hipster.reward.dto.response.UserRewardBalanceResponse;
 import com.hipster.reward.metrics.RewardMetricsRecorder;
 import com.hipster.reward.repository.RewardCampaignParticipationRepository;
@@ -45,9 +46,9 @@ import static org.mockito.Mockito.verify;
 class RewardLedgerServiceTest {
 
     private static final String DEFAULT_CAMPAIGN_CODE = "catalog_bootstrap_v1";
-    private static final String DEFAULT_CAMPAIGN_NAME = "승인 기여 기본 적립 캠페인";
+    private static final String DEFAULT_CAMPAIGN_NAME = "Catalog Bootstrap Default Campaign";
     private static final long POINTS_PER_APPROVAL = 100L;
-    private static final long TOTAL_POINT_CAP = 1000L;
+    private static final long TOTAL_POINT_CAP = 1_000L;
 
     @InjectMocks
     private RewardLedgerService rewardLedgerService;
@@ -79,7 +80,7 @@ class RewardLedgerServiceTest {
     }
 
     @Test
-    @DisplayName("승인된 기여는 적립 원장에 한 번 적립되고 참여 상태가 활성화된다")
+    @DisplayName("승인된 기여는 적립 항목으로 저장되고 참여 상태를 활성화한다")
     void accrueApprovedContribution_Success() {
         ModerationQueue approvedItem = approvedQueue(1L, 10L);
         RewardCampaign campaign = defaultCampaign(0L);
@@ -88,9 +89,6 @@ class RewardLedgerServiceTest {
         given(rewardLedgerEntryRepository.findByApprovalIdAndCampaignCodeAndEntryType(
                 approvedItem.getId(), DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.ACCRUAL
         )).willReturn(Optional.empty());
-        given(rewardCampaignParticipationRepository.existsByCampaignCodeAndUserIdAndActiveTrue(
-                DEFAULT_CAMPAIGN_CODE, approvedItem.getSubmitterId()
-        )).willReturn(false);
         given(rewardLedgerEntryRepository.save(any(RewardLedgerEntry.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
         given(rewardCampaignParticipationRepository.findByCampaignCodeAndUserId(
@@ -112,7 +110,7 @@ class RewardLedgerServiceTest {
     }
 
     @Test
-    @DisplayName("같은 승인 입력이 다시 들어오면 기존 적립을 반환하고 중복 생성하지 않는다")
+    @DisplayName("같은 승인 입력이 다시 들어오면 기존 적립 결과를 반환하고 중복 생성하지 않는다")
     void accrueApprovedContribution_DuplicateInput_ReturnsExistingEntry() {
         ModerationQueue approvedItem = approvedQueue(2L, 11L);
         RewardCampaign campaign = defaultCampaign(POINTS_PER_APPROVAL);
@@ -136,33 +134,43 @@ class RewardLedgerServiceTest {
     }
 
     @Test
-    @DisplayName("같은 사용자-같은 캠페인 활성 참여가 있으면 중복 지급 대신 차단 기록을 남긴다")
-    void accrueApprovedContribution_ParticipationBlocked_SavesBlockedEntry() {
-        ModerationQueue approvedItem = approvedQueue(3L, 12L);
-        RewardCampaign campaign = defaultCampaign(POINTS_PER_APPROVAL);
+    @DisplayName("같은 사용자의 다른 승인 기여는 같은 캠페인에서도 각각 적립된다")
+    void accrueApprovedContribution_DifferentApprovalsForSameUser_AccruesEachContribution() {
+        ModerationQueue firstApproval = approvedQueue(21L, 200L);
+        ModerationQueue secondApproval = approvedQueue(22L, 200L);
+        RewardCampaign campaign = defaultCampaign(0L);
+        RewardCampaignParticipation existingParticipation = RewardCampaignParticipation.activeParticipation(
+                DEFAULT_CAMPAIGN_CODE, firstApproval.getSubmitterId()
+        );
 
         given(rewardCampaignRepository.findByCodeForUpdate(DEFAULT_CAMPAIGN_CODE)).willReturn(Optional.of(campaign));
         given(rewardLedgerEntryRepository.findByApprovalIdAndCampaignCodeAndEntryType(
-                approvedItem.getId(), DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.ACCRUAL
+                firstApproval.getId(), DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.ACCRUAL
         )).willReturn(Optional.empty());
-        given(rewardCampaignParticipationRepository.existsByCampaignCodeAndUserIdAndActiveTrue(
-                DEFAULT_CAMPAIGN_CODE, approvedItem.getSubmitterId()
-        )).willReturn(true);
+        given(rewardLedgerEntryRepository.findByApprovalIdAndCampaignCodeAndEntryType(
+                secondApproval.getId(), DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.ACCRUAL
+        )).willReturn(Optional.empty());
         given(rewardLedgerEntryRepository.save(any(RewardLedgerEntry.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
+        given(rewardCampaignParticipationRepository.findByCampaignCodeAndUserId(
+                DEFAULT_CAMPAIGN_CODE, firstApproval.getSubmitterId()
+        )).willReturn(Optional.empty(), Optional.of(existingParticipation));
+        given(rewardCampaignParticipationRepository.save(any(RewardCampaignParticipation.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
 
-        RewardLedgerEntry blockedEntry = rewardLedgerService.accrueApprovedContribution(approvedItem);
+        RewardLedgerEntry firstEntry = rewardLedgerService.accrueApprovedContribution(firstApproval);
+        RewardLedgerEntry secondEntry = rewardLedgerService.accrueApprovedContribution(secondApproval);
 
-        assertThat(blockedEntry.getEntryStatus()).isEqualTo(RewardLedgerEntryStatus.PARTICIPATION_BLOCKED);
-        assertThat(blockedEntry.getPointsDelta()).isZero();
-        assertThat(campaign.getGrantedPoints()).isEqualTo(POINTS_PER_APPROVAL);
+        assertThat(firstEntry.getEntryStatus()).isEqualTo(RewardLedgerEntryStatus.ACCRUED);
+        assertThat(secondEntry.getEntryStatus()).isEqualTo(RewardLedgerEntryStatus.ACCRUED);
+        assertThat(firstEntry.getApprovalId()).isNotEqualTo(secondEntry.getApprovalId());
+        assertThat(campaign.getGrantedPoints()).isEqualTo(POINTS_PER_APPROVAL * 2);
 
-        verify(rewardMetricsRecorder).recordDecision("participation_blocked");
-        verify(rewardMetricsRecorder).recordLedgerEntry(RewardLedgerEntryType.ACCRUAL.name());
+        verify(rewardMetricsRecorder, never()).recordDecision("participation_blocked");
     }
 
     @Test
-    @DisplayName("캠페인 총 적립 상한을 넘기면 차단 기록만 남기고 포인트를 적립하지 않는다")
+    @DisplayName("캠페인 총 적립 한도를 넘기면 차단 항목만 남기고 포인트는 적립하지 않는다")
     void accrueApprovedContribution_CapExceeded_SavesBlockedEntry() {
         ModerationQueue approvedItem = approvedQueue(4L, 13L);
         RewardCampaign campaign = defaultCampaign(TOTAL_POINT_CAP);
@@ -171,9 +179,6 @@ class RewardLedgerServiceTest {
         given(rewardLedgerEntryRepository.findByApprovalIdAndCampaignCodeAndEntryType(
                 approvedItem.getId(), DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.ACCRUAL
         )).willReturn(Optional.empty());
-        given(rewardCampaignParticipationRepository.existsByCampaignCodeAndUserIdAndActiveTrue(
-                DEFAULT_CAMPAIGN_CODE, approvedItem.getSubmitterId()
-        )).willReturn(false);
         given(rewardLedgerEntryRepository.save(any(RewardLedgerEntry.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -188,7 +193,7 @@ class RewardLedgerServiceTest {
     }
 
     @Test
-    @DisplayName("취소 적립은 기존 적립을 상쇄하는 음수 원장 항목으로 남기고 참여 상태를 비활성화한다")
+    @DisplayName("취소 적립은 기존 적립을 상쇄하는 별도 항목으로 남고 참여 상태를 갱신한다")
     void reverseApprovalAccrual_Success() {
         Long approvalId = 5L;
         Long userId = 14L;
@@ -207,6 +212,8 @@ class RewardLedgerServiceTest {
                 approvalId, DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.REVERSAL
         )).willReturn(Optional.empty());
         given(rewardCampaignRepository.findByCodeForUpdate(DEFAULT_CAMPAIGN_CODE)).willReturn(Optional.of(campaign));
+        given(rewardLedgerEntryRepository.sumPointsDeltaByUserIdAndCampaignCode(userId, DEFAULT_CAMPAIGN_CODE))
+                .willReturn(POINTS_PER_APPROVAL);
         given(rewardLedgerEntryRepository.save(any(RewardLedgerEntry.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
         given(rewardCampaignParticipationRepository.findByCampaignCodeAndUserId(DEFAULT_CAMPAIGN_CODE, userId))
@@ -233,7 +240,43 @@ class RewardLedgerServiceTest {
     }
 
     @Test
-    @DisplayName("승인된 기여에 적립 기록이 없으면 누락 상태로 판별된다")
+    @DisplayName("다른 적립이 남아 있으면 reversal 이후에도 참여 상태는 활성으로 유지된다")
+    void reverseApprovalAccrual_WithRemainingPoints_KeepsParticipationActive() {
+        Long approvalId = 31L;
+        Long userId = 300L;
+        RewardCampaign campaign = defaultCampaign(POINTS_PER_APPROVAL * 2);
+        RewardLedgerEntry accrualEntry = RewardLedgerEntry.accrued(approvalId, userId, DEFAULT_CAMPAIGN_CODE, POINTS_PER_APPROVAL);
+        ReflectionTestUtils.setField(accrualEntry, "id", 3000L);
+        RewardCampaignParticipation participation = RewardCampaignParticipation.activeParticipation(DEFAULT_CAMPAIGN_CODE, userId);
+        ModerationQueue approvedQueue = approvedQueue(approvalId, userId);
+
+        given(rewardLedgerEntryRepository.findByApprovalIdAndCampaignCodeAndEntryType(
+                approvalId, DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.ACCRUAL
+        )).willReturn(Optional.of(accrualEntry));
+        given(rewardLedgerEntryRepository.findByApprovalIdAndCampaignCodeAndEntryType(
+                approvalId, DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.REVERSAL
+        )).willReturn(Optional.empty());
+        given(rewardCampaignRepository.findByCodeForUpdate(DEFAULT_CAMPAIGN_CODE)).willReturn(Optional.of(campaign));
+        given(rewardLedgerEntryRepository.sumPointsDeltaByUserIdAndCampaignCode(userId, DEFAULT_CAMPAIGN_CODE))
+                .willReturn(POINTS_PER_APPROVAL * 2);
+        given(rewardLedgerEntryRepository.save(any(RewardLedgerEntry.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        given(rewardCampaignParticipationRepository.findByCampaignCodeAndUserId(DEFAULT_CAMPAIGN_CODE, userId))
+                .willReturn(Optional.of(participation));
+        given(moderationQueueRepository.findById(approvalId)).willReturn(Optional.of(approvedQueue));
+        given(rewardLedgerEntryRepository.findAllByApprovalIdOrderByCreatedAtAsc(approvalId))
+                .willReturn(List.of(
+                        accrualEntry,
+                        RewardLedgerEntry.reversal(approvalId, userId, DEFAULT_CAMPAIGN_CODE, POINTS_PER_APPROVAL, 3000L, "partial reversal")
+                ));
+
+        rewardLedgerService.reverseApprovalAccrual(approvalId, "partial reversal");
+
+        assertThat(participation.isActive()).isTrue();
+    }
+
+    @Test
+    @DisplayName("승인된 기여에 적립 기록이 없으면 누락 상태로 조회된다")
     void getApprovalAccrual_MissingAccrual_ReturnsMissing() {
         Long approvalId = 6L;
         ModerationQueue approvedQueue = approvedQueue(approvalId, 15L);
@@ -249,7 +292,7 @@ class RewardLedgerServiceTest {
     }
 
     @Test
-    @DisplayName("사용자 잔액은 원장 항목 합계의 결과값으로 조회된다")
+    @DisplayName("사용자 잔액은 원장 합계 기준으로 계산된다")
     void getUserRewardBalance_SumsLedgerEntries() {
         Long userId = 16L;
         User user = User.builder()
@@ -259,12 +302,10 @@ class RewardLedgerServiceTest {
                 .build();
         ReflectionTestUtils.setField(user, "id", userId);
 
-        RewardCampaignParticipation participation = RewardCampaignParticipation.activeParticipation(DEFAULT_CAMPAIGN_CODE, userId);
-
         given(userRepository.findById(userId)).willReturn(Optional.of(user));
         given(rewardLedgerEntryRepository.sumPointsDeltaByUserId(userId)).willReturn(70L);
-        given(rewardCampaignParticipationRepository.findByCampaignCodeAndUserId(DEFAULT_CAMPAIGN_CODE, userId))
-                .willReturn(Optional.of(participation));
+        given(rewardLedgerEntryRepository.sumPointsDeltaByUserIdAndCampaignCode(userId, DEFAULT_CAMPAIGN_CODE))
+                .willReturn(70L);
 
         UserRewardBalanceResponse response = rewardLedgerService.getUserRewardBalance(userId);
 
@@ -274,7 +315,44 @@ class RewardLedgerServiceTest {
     }
 
     @Test
-    @DisplayName("승인 상태가 아닌 항목은 적립 입력으로 허용되지 않는다")
+    @DisplayName("사용자는 자신의 승인 기준 적립 상태를 목록으로 조회할 수 있다")
+    void getUserApprovalAccruals_ReturnsApprovalScopedAccruals() {
+        Long userId = 400L;
+        User user = User.builder()
+                .username("reward-user-2")
+                .email("reward-user-2@example.com")
+                .passwordHash("hashed-password")
+                .build();
+        ReflectionTestUtils.setField(user, "id", userId);
+
+        ModerationQueue firstApproval = approvedQueue(41L, userId);
+        ModerationQueue secondApproval = approvedQueue(42L, userId);
+        RewardLedgerEntry firstEntry = RewardLedgerEntry.accrued(41L, userId, DEFAULT_CAMPAIGN_CODE, POINTS_PER_APPROVAL);
+        RewardLedgerEntry secondEntry = RewardLedgerEntry.blocked(
+                42L, userId, DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryStatus.CAP_EXCEEDED, "CAMPAIGN_POINT_CAP_EXCEEDED"
+        );
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(moderationQueueRepository.findBySubmitterIdAndStatusInOrderBySubmittedAtDesc(
+                userId, List.of(ModerationStatus.APPROVED)
+        )).willReturn(List.of(firstApproval, secondApproval));
+        given(rewardLedgerEntryRepository.findAllByApprovalIdInOrderByCreatedAtAsc(List.of(41L, 42L)))
+                .willReturn(List.of(firstEntry, secondEntry));
+
+        UserRewardApprovalAccrualListResponse response = rewardLedgerService.getUserApprovalAccruals(userId);
+
+        assertThat(response.userId()).isEqualTo(userId);
+        assertThat(response.totalApprovals()).isEqualTo(2);
+        assertThat(response.items()).hasSize(2);
+        assertThat(response.items().get(0).approvalId()).isEqualTo(41L);
+        assertThat(response.items().get(0).entityType()).isEqualTo(EntityType.ARTIST);
+        assertThat(response.items().get(0).accrualState()).isEqualTo(RewardApprovalAccrualState.ACCRUED);
+        assertThat(response.items().get(1).approvalId()).isEqualTo(42L);
+        assertThat(response.items().get(1).accrualState()).isEqualTo(RewardApprovalAccrualState.CAP_EXCEEDED);
+    }
+
+    @Test
+    @DisplayName("승인 상태가 아닌 항목은 적립 입력으로 사용할 수 없다")
     void accrueApprovedContribution_NotApproved_ThrowsBadRequest() {
         ModerationQueue pendingItem = ModerationQueue.builder()
                 .entityType(EntityType.ARTIST)
@@ -291,7 +369,7 @@ class RewardLedgerServiceTest {
     }
 
     @Test
-    @DisplayName("적립되지 않은 승인 건은 취소 적립을 만들 수 없다")
+    @DisplayName("적립되지 않은 승인 건은 reversal을 만들 수 없다")
     void reverseApprovalAccrual_WithoutAccrual_ThrowsNotFound() {
         Long approvalId = 8L;
 
@@ -307,7 +385,7 @@ class RewardLedgerServiceTest {
     private ModerationQueue approvedQueue(final Long approvalId, final Long submitterId) {
         ModerationQueue queue = ModerationQueue.builder()
                 .entityType(EntityType.ARTIST)
-                .entityId(200L)
+                .entityId(200L + approvalId)
                 .submitterId(submitterId)
                 .metaComment("approved contribution")
                 .priority(2)

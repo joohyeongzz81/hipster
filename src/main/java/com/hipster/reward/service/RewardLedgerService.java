@@ -15,6 +15,7 @@ import com.hipster.reward.domain.RewardLedgerEntryStatus;
 import com.hipster.reward.domain.RewardLedgerEntryType;
 import com.hipster.reward.dto.response.RewardApprovalAccrualResponse;
 import com.hipster.reward.dto.response.RewardLedgerEntryResponse;
+import com.hipster.reward.dto.response.UserRewardApprovalAccrualListResponse;
 import com.hipster.reward.dto.response.UserRewardBalanceResponse;
 import com.hipster.reward.metrics.RewardMetricsRecorder;
 import com.hipster.reward.repository.RewardCampaignParticipationRepository;
@@ -28,13 +29,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class RewardLedgerService {
 
     private static final String CAP_EXCEEDED_REASON = "CAMPAIGN_POINT_CAP_EXCEEDED";
-    private static final String PARTICIPATION_BLOCKED_REASON = "PARTICIPATION_RULE_BLOCKED";
 
     @Value("${hipster.reward.default-campaign-code:catalog_bootstrap_v1}")
     private String defaultCampaignCode;
@@ -70,21 +72,6 @@ public class RewardLedgerService {
             return existingEntry;
         }
 
-        if (rewardCampaignParticipationRepository.existsByCampaignCodeAndUserIdAndActiveTrue(campaign.getCode(), approvedItem.getSubmitterId())) {
-            final RewardLedgerEntry blockedEntry = rewardLedgerEntryRepository.save(
-                    RewardLedgerEntry.blocked(
-                            approvedItem.getId(),
-                            approvedItem.getSubmitterId(),
-                            campaign.getCode(),
-                            RewardLedgerEntryStatus.PARTICIPATION_BLOCKED,
-                            PARTICIPATION_BLOCKED_REASON
-                    )
-            );
-            rewardMetricsRecorder.recordDecision("participation_blocked");
-            rewardMetricsRecorder.recordLedgerEntry(RewardLedgerEntryType.ACCRUAL.name());
-            return blockedEntry;
-        }
-
         if (!campaign.canAccrue(campaign.getPointsPerApproval())) {
             final RewardLedgerEntry blockedEntry = rewardLedgerEntryRepository.save(
                     RewardLedgerEntry.blocked(
@@ -110,11 +97,7 @@ public class RewardLedgerService {
                 )
         );
 
-        final RewardCampaignParticipation participation = rewardCampaignParticipationRepository
-                .findByCampaignCodeAndUserId(campaign.getCode(), approvedItem.getSubmitterId())
-                .orElseGet(() -> RewardCampaignParticipation.activeParticipation(campaign.getCode(), approvedItem.getSubmitterId()));
-        participation.activate();
-        rewardCampaignParticipationRepository.save(participation);
+        upsertParticipationState(campaign.getCode(), approvedItem.getSubmitterId(), true);
 
         rewardMetricsRecorder.recordDecision("accrued");
         rewardMetricsRecorder.recordLedgerEntry(RewardLedgerEntryType.ACCRUAL.name());
@@ -129,15 +112,41 @@ public class RewardLedgerService {
         final RewardApprovalAccrualState accrualState = deriveAccrualState(queueItem.getStatus(), entries);
         final long netPoints = entries.stream().mapToLong(RewardLedgerEntry::getPointsDelta).sum();
 
-        return new RewardApprovalAccrualResponse(
-                approvalId,
-                queueItem.getStatus(),
-                queueItem.getSubmitterId(),
-                defaultCampaignCode,
-                accrualState,
-                netPoints,
-                entries.stream().map(RewardLedgerEntryResponse::from).toList()
+        return toApprovalAccrualResponse(queueItem, entries, netPoints, accrualState);
+    }
+
+    @Transactional(readOnly = true)
+    public UserRewardApprovalAccrualListResponse getUserApprovalAccruals(final Long userId) {
+        userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
+
+        final List<ModerationQueue> approvedItems = moderationQueueRepository.findBySubmitterIdAndStatusInOrderBySubmittedAtDesc(
+                userId,
+                List.of(ModerationStatus.APPROVED)
         );
+
+        if (approvedItems.isEmpty()) {
+            return new UserRewardApprovalAccrualListResponse(userId, defaultCampaignCode, 0, List.of());
+        }
+
+        final List<Long> approvalIds = approvedItems.stream()
+                .map(ModerationQueue::getId)
+                .toList();
+        final Map<Long, List<RewardLedgerEntry>> entriesByApprovalId = rewardLedgerEntryRepository
+                .findAllByApprovalIdInOrderByCreatedAtAsc(approvalIds)
+                .stream()
+                .collect(Collectors.groupingBy(RewardLedgerEntry::getApprovalId));
+
+        final List<RewardApprovalAccrualResponse> items = approvedItems.stream()
+                .map(queueItem -> {
+                    final List<RewardLedgerEntry> entries = entriesByApprovalId.getOrDefault(queueItem.getId(), List.of());
+                    final RewardApprovalAccrualState accrualState = deriveAccrualState(queueItem.getStatus(), entries);
+                    final long netPoints = entries.stream().mapToLong(RewardLedgerEntry::getPointsDelta).sum();
+                    return toApprovalAccrualResponse(queueItem, entries, netPoints, accrualState);
+                })
+                .toList();
+
+        return new UserRewardApprovalAccrualListResponse(userId, defaultCampaignCode, items.size(), items);
     }
 
     @Transactional
@@ -161,6 +170,9 @@ public class RewardLedgerService {
         final RewardCampaign campaign = rewardCampaignRepository.findByCodeForUpdate(defaultCampaignCode)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.REWARD_CAMPAIGN_NOT_FOUND));
         campaign.reverse(accrualEntry.getPointsDelta());
+        final long currentCampaignPoints = rewardLedgerEntryRepository
+                .sumPointsDeltaByUserIdAndCampaignCode(accrualEntry.getUserId(), accrualEntry.getCampaignCode());
+        final long remainingCampaignPoints = currentCampaignPoints - Math.abs(accrualEntry.getPointsDelta());
 
         final RewardLedgerEntry reversalEntry = rewardLedgerEntryRepository.save(
                 RewardLedgerEntry.reversal(
@@ -173,11 +185,7 @@ public class RewardLedgerService {
                 )
         );
 
-        rewardCampaignParticipationRepository.findByCampaignCodeAndUserId(accrualEntry.getCampaignCode(), accrualEntry.getUserId())
-                .ifPresent(participation -> {
-                    participation.deactivate();
-                    rewardCampaignParticipationRepository.save(participation);
-                });
+        upsertParticipationState(accrualEntry.getCampaignCode(), accrualEntry.getUserId(), remainingCampaignPoints > 0);
 
         rewardMetricsRecorder.recordDecision("reversed");
         rewardMetricsRecorder.recordLedgerEntry(reversalEntry.getEntryType().name());
@@ -190,10 +198,8 @@ public class RewardLedgerService {
                 .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
 
         final long totalPoints = rewardLedgerEntryRepository.sumPointsDeltaByUserId(userId);
-        final boolean activeParticipation = rewardCampaignParticipationRepository
-                .findByCampaignCodeAndUserId(defaultCampaignCode, userId)
-                .map(RewardCampaignParticipation::isActive)
-                .orElse(false);
+        final boolean activeParticipation = rewardLedgerEntryRepository
+                .sumPointsDeltaByUserIdAndCampaignCode(userId, defaultCampaignCode) > 0;
 
         return new UserRewardBalanceResponse(userId, defaultCampaignCode, totalPoints, activeParticipation);
     }
@@ -249,5 +255,36 @@ public class RewardLedgerService {
             case CAP_EXCEEDED -> RewardApprovalAccrualState.CAP_EXCEEDED;
             case REVERSED -> RewardApprovalAccrualState.REVERSED;
         };
+    }
+
+    private RewardApprovalAccrualResponse toApprovalAccrualResponse(final ModerationQueue queueItem,
+                                                                    final List<RewardLedgerEntry> entries,
+                                                                    final long netPoints,
+                                                                    final RewardApprovalAccrualState accrualState) {
+        return new RewardApprovalAccrualResponse(
+                queueItem.getId(),
+                queueItem.getStatus(),
+                queueItem.getSubmitterId(),
+                queueItem.getEntityType(),
+                queueItem.getEntityId(),
+                defaultCampaignCode,
+                accrualState,
+                netPoints,
+                entries.stream().map(RewardLedgerEntryResponse::from).toList()
+        );
+    }
+
+    private void upsertParticipationState(final String campaignCode, final Long userId, final boolean active) {
+        final RewardCampaignParticipation participation = rewardCampaignParticipationRepository
+                .findByCampaignCodeAndUserId(campaignCode, userId)
+                .orElseGet(() -> RewardCampaignParticipation.activeParticipation(campaignCode, userId));
+
+        if (active) {
+            participation.activate();
+        } else {
+            participation.deactivate();
+        }
+
+        rewardCampaignParticipationRepository.save(participation);
     }
 }

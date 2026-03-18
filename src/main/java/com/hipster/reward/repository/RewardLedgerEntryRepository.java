@@ -17,6 +17,17 @@ public interface RewardLedgerEntryRepository extends JpaRepository<RewardLedgerE
 
     List<RewardLedgerEntry> findAllByApprovalIdOrderByCreatedAtAsc(Long approvalId);
 
+    List<RewardLedgerEntry> findAllByApprovalIdInOrderByCreatedAtAsc(List<Long> approvalIds);
+
     @Query("select coalesce(sum(entry.pointsDelta), 0) from RewardLedgerEntry entry where entry.userId = :userId")
     Long sumPointsDeltaByUserId(@Param("userId") Long userId);
+
+    @Query("""
+            select coalesce(sum(entry.pointsDelta), 0)
+            from RewardLedgerEntry entry
+            where entry.userId = :userId
+              and entry.campaignCode = :campaignCode
+            """)
+    Long sumPointsDeltaByUserIdAndCampaignCode(@Param("userId") Long userId,
+                                               @Param("campaignCode") String campaignCode);
 }

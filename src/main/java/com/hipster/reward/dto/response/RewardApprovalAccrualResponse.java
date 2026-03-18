@@ -1,5 +1,6 @@
 package com.hipster.reward.dto.response;
 
+import com.hipster.moderation.domain.EntityType;
 import com.hipster.moderation.domain.ModerationStatus;
 import com.hipster.reward.domain.RewardApprovalAccrualState;
 
@@ -9,6 +10,8 @@ public record RewardApprovalAccrualResponse(
         Long approvalId,
         ModerationStatus approvalStatus,
         Long userId,
+        EntityType entityType,
+        Long entityId,
         String campaignCode,
         RewardApprovalAccrualState accrualState,
         long netPoints,

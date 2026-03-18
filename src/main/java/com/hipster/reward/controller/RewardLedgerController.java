@@ -1,10 +1,13 @@
 package com.hipster.reward.controller;
 
+import com.hipster.auth.annotation.CurrentUser;
+import com.hipster.auth.dto.response.CurrentUserInfo;
 import com.hipster.auth.UserRole;
 import com.hipster.auth.annotation.RequireRole;
 import com.hipster.global.dto.response.ApiResponse;
 import com.hipster.reward.dto.request.RewardReversalRequest;
 import com.hipster.reward.dto.response.RewardApprovalAccrualResponse;
+import com.hipster.reward.dto.response.UserRewardApprovalAccrualListResponse;
 import com.hipster.reward.dto.response.UserRewardBalanceResponse;
 import com.hipster.reward.service.RewardLedgerService;
 import jakarta.validation.Valid;
@@ -23,6 +26,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class RewardLedgerController {
 
     private final RewardLedgerService rewardLedgerService;
+
+    @GetMapping("/me/approvals")
+    public ResponseEntity<ApiResponse<UserRewardApprovalAccrualListResponse>> getMyApprovalAccruals(
+            @CurrentUser final CurrentUserInfo currentUser) {
+        return ResponseEntity.ok(ApiResponse.ok(rewardLedgerService.getUserApprovalAccruals(currentUser.userId())));
+    }
+
+    @GetMapping("/me/balance")
+    public ResponseEntity<ApiResponse<UserRewardBalanceResponse>> getMyRewardBalance(
+            @CurrentUser final CurrentUserInfo currentUser) {
+        return ResponseEntity.ok(ApiResponse.ok(rewardLedgerService.getUserRewardBalance(currentUser.userId())));
+    }
 
     @GetMapping("/approvals/{approvalId}")
     @RequireRole(UserRole.ADMIN)
