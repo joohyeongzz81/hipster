@@ -37,6 +37,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -107,6 +109,8 @@ class RewardLedgerServiceTest {
         verify(rewardMetricsRecorder).recordApprovedInput();
         verify(rewardMetricsRecorder).recordDecision("accrued");
         verify(rewardMetricsRecorder).recordLedgerEntry(RewardLedgerEntryType.ACCRUAL.name());
+        verify(rewardMetricsRecorder).recordOperationDuration(eq("get_or_create_default_campaign_for_update"), eq("success"), anyLong());
+        verify(rewardMetricsRecorder).recordOperationDuration(eq("accrue_approved_contribution"), eq("success"), anyLong());
     }
 
     @Test
@@ -349,6 +353,7 @@ class RewardLedgerServiceTest {
         assertThat(response.items().get(0).accrualState()).isEqualTo(RewardApprovalAccrualState.ACCRUED);
         assertThat(response.items().get(1).approvalId()).isEqualTo(42L);
         assertThat(response.items().get(1).accrualState()).isEqualTo(RewardApprovalAccrualState.CAP_EXCEEDED);
+        verify(rewardMetricsRecorder).recordOperationDuration(eq("get_user_approval_accruals"), eq("success"), anyLong());
     }
 
     @Test

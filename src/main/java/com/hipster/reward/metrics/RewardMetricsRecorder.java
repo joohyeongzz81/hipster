@@ -2,6 +2,7 @@ package com.hipster.reward.metrics;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -9,6 +10,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 @Component
 public class RewardMetricsRecorder {
@@ -17,6 +19,7 @@ public class RewardMetricsRecorder {
     private final Counter approvedInputCounter;
     private final Map<String, Counter> decisionCounters = new ConcurrentHashMap<>();
     private final Map<String, Counter> ledgerEntryCounters = new ConcurrentHashMap<>();
+    private final Map<String, Timer> operationTimers = new ConcurrentHashMap<>();
 
     public RewardMetricsRecorder(final MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
@@ -49,6 +52,22 @@ public class RewardMetricsRecorder {
                         .register(meterRegistry)
         );
         incrementAfterCommit(counter);
+    }
+
+    public void recordOperationDuration(final String operation, final String outcome, final long durationNanos) {
+        final String normalizedOperation = operation.toLowerCase(Locale.ROOT);
+        final String normalizedOutcome = outcome.toLowerCase(Locale.ROOT);
+        final String timerKey = normalizedOperation + ":" + normalizedOutcome;
+
+        final Timer timer = operationTimers.computeIfAbsent(timerKey, key ->
+                Timer.builder("reward.operation.duration")
+                        .description("Reward operation duration")
+                        .tag("operation", normalizedOperation)
+                        .tag("outcome", normalizedOutcome)
+                        .register(meterRegistry)
+        );
+
+        timer.record(durationNanos, TimeUnit.NANOSECONDS);
     }
 
     private void incrementAfterCommit(final Counter counter) {

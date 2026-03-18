@@ -6,6 +6,7 @@ import com.hipster.moderation.repository.ModerationQueueRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -16,6 +17,8 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 @Component
 public class ModerationMetricsRecorder {
@@ -25,13 +28,16 @@ public class ModerationMetricsRecorder {
             ModerationStatus.UNDER_REVIEW
     );
 
+    private final MeterRegistry meterRegistry;
     private final ModerationQueueRepository moderationQueueRepository;
     private final long moderationSlaHours;
     private final Map<ModerationAuditEventType, Counter> actionCounters = new EnumMap<>(ModerationAuditEventType.class);
+    private final Map<String, Timer> approveOutcomeTimers = new ConcurrentHashMap<>();
 
     public ModerationMetricsRecorder(final MeterRegistry meterRegistry,
                                      final ModerationQueueRepository moderationQueueRepository,
                                      @Value("${hipster.moderation.sla-hours:24}") final long moderationSlaHours) {
+        this.meterRegistry = meterRegistry;
         this.moderationQueueRepository = moderationQueueRepository;
         this.moderationSlaHours = moderationSlaHours;
 
@@ -75,6 +81,18 @@ public class ModerationMetricsRecorder {
         }
 
         counter.increment();
+    }
+
+    public void recordApproveDuration(final String outcome, final long durationNanos) {
+        final String normalizedOutcome = outcome.toLowerCase(Locale.ROOT);
+        final Timer timer = approveOutcomeTimers.computeIfAbsent(normalizedOutcome, key ->
+                Timer.builder("moderation.approve.duration")
+                        .description("Moderation approve duration")
+                        .tag("outcome", key)
+                        .register(meterRegistry)
+        );
+
+        timer.record(durationNanos, TimeUnit.NANOSECONDS);
     }
 
     double countPendingItems() {

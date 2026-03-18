@@ -7,6 +7,7 @@ import com.hipster.artist.repository.ArtistRepository;
 import com.hipster.genre.repository.GenreRepository;
 import com.hipster.global.dto.response.PaginationDto;
 import com.hipster.global.exception.BadRequestException;
+import com.hipster.global.exception.BusinessException;
 import com.hipster.global.exception.ConflictException;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.ForbiddenException;
@@ -49,6 +50,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -212,30 +214,40 @@ public class ModerationQueueService {
 
     @Transactional
     public void approve(final Long queueId, final Long moderatorId, final String comment) {
-        final ModerationQueue item = findQueueItemOrThrow(queueId);
-        validateNotAlreadyProcessed(item);
-        persistExpiredClaimReleaseIfNeeded(item);
-        validateModeratorOwnership(item, moderatorId);
+        final long startedAt = System.nanoTime();
+        String outcome = "success";
 
-        final ModerationStatus previousStatus = item.getStatus();
-        final Long previousModeratorId = item.getModeratorId();
-        final LocalDateTime occurredAt = LocalDateTime.now();
-        applyApprovalEntityState(item);
-        item.approve(comment);
-        moderationQueueRepository.save(item);
-        rewardLedgerService.accrueApprovedContribution(item);
-        recordAuditTrail(
-                item.getId(),
-                ModerationAuditEventType.APPROVED,
-                moderatorId,
-                previousStatus,
-                item.getStatus(),
-                previousModeratorId,
-                item.getModeratorId(),
-                null,
-                comment,
-                occurredAt
-        );
+        try {
+            final ModerationQueue item = findQueueItemOrThrow(queueId);
+            validateNotAlreadyProcessed(item);
+            persistExpiredClaimReleaseIfNeeded(item);
+            validateModeratorOwnership(item, moderatorId);
+
+            final ModerationStatus previousStatus = item.getStatus();
+            final Long previousModeratorId = item.getModeratorId();
+            final LocalDateTime occurredAt = LocalDateTime.now();
+            applyApprovalEntityState(item);
+            item.approve(comment);
+            moderationQueueRepository.save(item);
+            rewardLedgerService.accrueApprovedContribution(item);
+            recordAuditTrail(
+                    item.getId(),
+                    ModerationAuditEventType.APPROVED,
+                    moderatorId,
+                    previousStatus,
+                    item.getStatus(),
+                    previousModeratorId,
+                    item.getModeratorId(),
+                    null,
+                    comment,
+                    occurredAt
+            );
+        } catch (RuntimeException exception) {
+            outcome = resolveApproveOutcome(exception);
+            throw exception;
+        } finally {
+            moderationMetricsRecorder.recordApproveDuration(outcome, System.nanoTime() - startedAt);
+        }
     }
 
     @Transactional
@@ -474,6 +486,14 @@ public class ModerationQueueService {
                 occurredAt
         ));
         moderationMetricsRecorder.recordAction(eventType);
+    }
+
+    private String resolveApproveOutcome(final RuntimeException exception) {
+        if (exception instanceof BusinessException businessException) {
+            return businessException.getErrorCode().name().toLowerCase(Locale.ROOT);
+        }
+
+        return exception.getClass().getSimpleName().toLowerCase(Locale.ROOT);
     }
 
     private ModerationSubmitResponse handleSpamSubmission(final ModerationSubmitRequest request, final Long submitterId,

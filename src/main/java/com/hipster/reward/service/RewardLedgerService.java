@@ -1,6 +1,7 @@
 package com.hipster.reward.service;
 
 import com.hipster.global.exception.BadRequestException;
+import com.hipster.global.exception.BusinessException;
 import com.hipster.global.exception.ConflictException;
 import com.hipster.global.exception.ErrorCode;
 import com.hipster.global.exception.NotFoundException;
@@ -29,7 +30,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Service
@@ -59,149 +62,159 @@ public class RewardLedgerService {
 
     @Transactional
     public RewardLedgerEntry accrueApprovedContribution(final ModerationQueue approvedItem) {
-        validateApprovalInput(approvedItem);
-        rewardMetricsRecorder.recordApprovedInput();
+        return recordOperationDuration("accrue_approved_contribution", () -> {
+            validateApprovalInput(approvedItem);
+            rewardMetricsRecorder.recordApprovedInput();
 
-        final RewardCampaign campaign = getOrCreateDefaultCampaignForUpdate();
-        final RewardLedgerEntry existingEntry = rewardLedgerEntryRepository
-                .findByApprovalIdAndCampaignCodeAndEntryType(approvedItem.getId(), campaign.getCode(), RewardLedgerEntryType.ACCRUAL)
-                .orElse(null);
+            final RewardCampaign campaign = getOrCreateDefaultCampaignForUpdate();
+            final RewardLedgerEntry existingEntry = rewardLedgerEntryRepository
+                    .findByApprovalIdAndCampaignCodeAndEntryType(approvedItem.getId(), campaign.getCode(), RewardLedgerEntryType.ACCRUAL)
+                    .orElse(null);
 
-        if (existingEntry != null) {
-            rewardMetricsRecorder.recordDecision("duplicate_input_ignored");
-            return existingEntry;
-        }
+            if (existingEntry != null) {
+                rewardMetricsRecorder.recordDecision("duplicate_input_ignored");
+                return existingEntry;
+            }
 
-        if (!campaign.canAccrue(campaign.getPointsPerApproval())) {
-            final RewardLedgerEntry blockedEntry = rewardLedgerEntryRepository.save(
-                    RewardLedgerEntry.blocked(
+            if (!campaign.canAccrue(campaign.getPointsPerApproval())) {
+                final RewardLedgerEntry blockedEntry = rewardLedgerEntryRepository.save(
+                        RewardLedgerEntry.blocked(
+                                approvedItem.getId(),
+                                approvedItem.getSubmitterId(),
+                                campaign.getCode(),
+                                RewardLedgerEntryStatus.CAP_EXCEEDED,
+                                CAP_EXCEEDED_REASON
+                        )
+                );
+                rewardMetricsRecorder.recordDecision("cap_exceeded");
+                rewardMetricsRecorder.recordLedgerEntry(RewardLedgerEntryType.ACCRUAL.name());
+                return blockedEntry;
+            }
+
+            campaign.accrue(campaign.getPointsPerApproval());
+            final RewardLedgerEntry accruedEntry = rewardLedgerEntryRepository.save(
+                    RewardLedgerEntry.accrued(
                             approvedItem.getId(),
                             approvedItem.getSubmitterId(),
                             campaign.getCode(),
-                            RewardLedgerEntryStatus.CAP_EXCEEDED,
-                            CAP_EXCEEDED_REASON
+                            campaign.getPointsPerApproval()
                     )
             );
-            rewardMetricsRecorder.recordDecision("cap_exceeded");
+
+            upsertParticipationState(campaign.getCode(), approvedItem.getSubmitterId(), true);
+
+            rewardMetricsRecorder.recordDecision("accrued");
             rewardMetricsRecorder.recordLedgerEntry(RewardLedgerEntryType.ACCRUAL.name());
-            return blockedEntry;
-        }
-
-        campaign.accrue(campaign.getPointsPerApproval());
-        final RewardLedgerEntry accruedEntry = rewardLedgerEntryRepository.save(
-                RewardLedgerEntry.accrued(
-                        approvedItem.getId(),
-                        approvedItem.getSubmitterId(),
-                        campaign.getCode(),
-                        campaign.getPointsPerApproval()
-                )
-        );
-
-        upsertParticipationState(campaign.getCode(), approvedItem.getSubmitterId(), true);
-
-        rewardMetricsRecorder.recordDecision("accrued");
-        rewardMetricsRecorder.recordLedgerEntry(RewardLedgerEntryType.ACCRUAL.name());
-        return accruedEntry;
+            return accruedEntry;
+        });
     }
 
     @Transactional(readOnly = true)
     public RewardApprovalAccrualResponse getApprovalAccrual(final Long approvalId) {
-        final ModerationQueue queueItem = moderationQueueRepository.findById(approvalId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.MODERATION_ITEM_NOT_FOUND));
-        final List<RewardLedgerEntry> entries = rewardLedgerEntryRepository.findAllByApprovalIdOrderByCreatedAtAsc(approvalId);
-        final RewardApprovalAccrualState accrualState = deriveAccrualState(queueItem.getStatus(), entries);
-        final long netPoints = entries.stream().mapToLong(RewardLedgerEntry::getPointsDelta).sum();
+        return recordOperationDuration("get_approval_accrual", () -> {
+            final ModerationQueue queueItem = moderationQueueRepository.findById(approvalId)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.MODERATION_ITEM_NOT_FOUND));
+            final List<RewardLedgerEntry> entries = rewardLedgerEntryRepository.findAllByApprovalIdOrderByCreatedAtAsc(approvalId);
+            final RewardApprovalAccrualState accrualState = deriveAccrualState(queueItem.getStatus(), entries);
+            final long netPoints = entries.stream().mapToLong(RewardLedgerEntry::getPointsDelta).sum();
 
-        return toApprovalAccrualResponse(queueItem, entries, netPoints, accrualState);
+            return toApprovalAccrualResponse(queueItem, entries, netPoints, accrualState);
+        });
     }
 
     @Transactional(readOnly = true)
     public UserRewardApprovalAccrualListResponse getUserApprovalAccruals(final Long userId) {
-        userRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
+        return recordOperationDuration("get_user_approval_accruals", () -> {
+            userRepository.findById(userId)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
 
-        final List<ModerationQueue> approvedItems = moderationQueueRepository.findBySubmitterIdAndStatusInOrderBySubmittedAtDesc(
-                userId,
-                List.of(ModerationStatus.APPROVED)
-        );
+            final List<ModerationQueue> approvedItems = moderationQueueRepository.findBySubmitterIdAndStatusInOrderBySubmittedAtDesc(
+                    userId,
+                    List.of(ModerationStatus.APPROVED)
+            );
 
-        if (approvedItems.isEmpty()) {
-            return new UserRewardApprovalAccrualListResponse(userId, defaultCampaignCode, 0, List.of());
-        }
+            if (approvedItems.isEmpty()) {
+                return new UserRewardApprovalAccrualListResponse(userId, defaultCampaignCode, 0, List.of());
+            }
 
-        final List<Long> approvalIds = approvedItems.stream()
-                .map(ModerationQueue::getId)
-                .toList();
-        final Map<Long, List<RewardLedgerEntry>> entriesByApprovalId = rewardLedgerEntryRepository
-                .findAllByApprovalIdInOrderByCreatedAtAsc(approvalIds)
-                .stream()
-                .collect(Collectors.groupingBy(RewardLedgerEntry::getApprovalId));
+            final List<Long> approvalIds = approvedItems.stream()
+                    .map(ModerationQueue::getId)
+                    .toList();
+            final Map<Long, List<RewardLedgerEntry>> entriesByApprovalId = rewardLedgerEntryRepository
+                    .findAllByApprovalIdInOrderByCreatedAtAsc(approvalIds)
+                    .stream()
+                    .collect(Collectors.groupingBy(RewardLedgerEntry::getApprovalId));
 
-        final List<RewardApprovalAccrualResponse> items = approvedItems.stream()
-                .map(queueItem -> {
-                    final List<RewardLedgerEntry> entries = entriesByApprovalId.getOrDefault(queueItem.getId(), List.of());
-                    final RewardApprovalAccrualState accrualState = deriveAccrualState(queueItem.getStatus(), entries);
-                    final long netPoints = entries.stream().mapToLong(RewardLedgerEntry::getPointsDelta).sum();
-                    return toApprovalAccrualResponse(queueItem, entries, netPoints, accrualState);
-                })
-                .toList();
+            final List<RewardApprovalAccrualResponse> items = approvedItems.stream()
+                    .map(queueItem -> {
+                        final List<RewardLedgerEntry> entries = entriesByApprovalId.getOrDefault(queueItem.getId(), List.of());
+                        final RewardApprovalAccrualState accrualState = deriveAccrualState(queueItem.getStatus(), entries);
+                        final long netPoints = entries.stream().mapToLong(RewardLedgerEntry::getPointsDelta).sum();
+                        return toApprovalAccrualResponse(queueItem, entries, netPoints, accrualState);
+                    })
+                    .toList();
 
-        return new UserRewardApprovalAccrualListResponse(userId, defaultCampaignCode, items.size(), items);
+            return new UserRewardApprovalAccrualListResponse(userId, defaultCampaignCode, items.size(), items);
+        });
     }
 
     @Transactional
     public RewardApprovalAccrualResponse reverseApprovalAccrual(final Long approvalId, final String reason) {
-        final RewardLedgerEntry accrualEntry = rewardLedgerEntryRepository
-                .findByApprovalIdAndCampaignCodeAndEntryType(approvalId, defaultCampaignCode, RewardLedgerEntryType.ACCRUAL)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.REWARD_ACCRUAL_NOT_FOUND));
+        return recordOperationDuration("reverse_approval_accrual", () -> {
+            final RewardLedgerEntry accrualEntry = rewardLedgerEntryRepository
+                    .findByApprovalIdAndCampaignCodeAndEntryType(approvalId, defaultCampaignCode, RewardLedgerEntryType.ACCRUAL)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.REWARD_ACCRUAL_NOT_FOUND));
 
-        if (accrualEntry.getEntryStatus() != RewardLedgerEntryStatus.ACCRUED) {
-            throw new BadRequestException(ErrorCode.REWARD_REVERSAL_NOT_ALLOWED);
-        }
+            if (accrualEntry.getEntryStatus() != RewardLedgerEntryStatus.ACCRUED) {
+                throw new BadRequestException(ErrorCode.REWARD_REVERSAL_NOT_ALLOWED);
+            }
 
-        final RewardLedgerEntry existingReversal = rewardLedgerEntryRepository
-                .findByApprovalIdAndCampaignCodeAndEntryType(approvalId, defaultCampaignCode, RewardLedgerEntryType.REVERSAL)
-                .orElse(null);
-        if (existingReversal != null) {
-            rewardMetricsRecorder.recordDecision("duplicate_reversal_ignored");
+            final RewardLedgerEntry existingReversal = rewardLedgerEntryRepository
+                    .findByApprovalIdAndCampaignCodeAndEntryType(approvalId, defaultCampaignCode, RewardLedgerEntryType.REVERSAL)
+                    .orElse(null);
+            if (existingReversal != null) {
+                rewardMetricsRecorder.recordDecision("duplicate_reversal_ignored");
+                return getApprovalAccrual(approvalId);
+            }
+
+            final RewardCampaign campaign = rewardCampaignRepository.findByCodeForUpdate(defaultCampaignCode)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.REWARD_CAMPAIGN_NOT_FOUND));
+            campaign.reverse(accrualEntry.getPointsDelta());
+            final long currentCampaignPoints = rewardLedgerEntryRepository
+                    .sumPointsDeltaByUserIdAndCampaignCode(accrualEntry.getUserId(), accrualEntry.getCampaignCode());
+            final long remainingCampaignPoints = currentCampaignPoints - Math.abs(accrualEntry.getPointsDelta());
+
+            final RewardLedgerEntry reversalEntry = rewardLedgerEntryRepository.save(
+                    RewardLedgerEntry.reversal(
+                            approvalId,
+                            accrualEntry.getUserId(),
+                            accrualEntry.getCampaignCode(),
+                            accrualEntry.getPointsDelta(),
+                            accrualEntry.getId(),
+                            reason
+                    )
+            );
+
+            upsertParticipationState(accrualEntry.getCampaignCode(), accrualEntry.getUserId(), remainingCampaignPoints > 0);
+
+            rewardMetricsRecorder.recordDecision("reversed");
+            rewardMetricsRecorder.recordLedgerEntry(reversalEntry.getEntryType().name());
             return getApprovalAccrual(approvalId);
-        }
-
-        final RewardCampaign campaign = rewardCampaignRepository.findByCodeForUpdate(defaultCampaignCode)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.REWARD_CAMPAIGN_NOT_FOUND));
-        campaign.reverse(accrualEntry.getPointsDelta());
-        final long currentCampaignPoints = rewardLedgerEntryRepository
-                .sumPointsDeltaByUserIdAndCampaignCode(accrualEntry.getUserId(), accrualEntry.getCampaignCode());
-        final long remainingCampaignPoints = currentCampaignPoints - Math.abs(accrualEntry.getPointsDelta());
-
-        final RewardLedgerEntry reversalEntry = rewardLedgerEntryRepository.save(
-                RewardLedgerEntry.reversal(
-                        approvalId,
-                        accrualEntry.getUserId(),
-                        accrualEntry.getCampaignCode(),
-                        accrualEntry.getPointsDelta(),
-                        accrualEntry.getId(),
-                        reason
-                )
-        );
-
-        upsertParticipationState(accrualEntry.getCampaignCode(), accrualEntry.getUserId(), remainingCampaignPoints > 0);
-
-        rewardMetricsRecorder.recordDecision("reversed");
-        rewardMetricsRecorder.recordLedgerEntry(reversalEntry.getEntryType().name());
-        return getApprovalAccrual(approvalId);
+        });
     }
 
     @Transactional(readOnly = true)
     public UserRewardBalanceResponse getUserRewardBalance(final Long userId) {
-        userRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
+        return recordOperationDuration("get_user_reward_balance", () -> {
+            userRepository.findById(userId)
+                    .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND));
 
-        final long totalPoints = rewardLedgerEntryRepository.sumPointsDeltaByUserId(userId);
-        final boolean activeParticipation = rewardLedgerEntryRepository
-                .sumPointsDeltaByUserIdAndCampaignCode(userId, defaultCampaignCode) > 0;
+            final long totalPoints = rewardLedgerEntryRepository.sumPointsDeltaByUserId(userId);
+            final boolean activeParticipation = rewardLedgerEntryRepository
+                    .sumPointsDeltaByUserIdAndCampaignCode(userId, defaultCampaignCode) > 0;
 
-        return new UserRewardBalanceResponse(userId, defaultCampaignCode, totalPoints, activeParticipation);
+            return new UserRewardBalanceResponse(userId, defaultCampaignCode, totalPoints, activeParticipation);
+        });
     }
 
     private void validateApprovalInput(final ModerationQueue approvedItem) {
@@ -214,22 +227,24 @@ public class RewardLedgerService {
     }
 
     private RewardCampaign getOrCreateDefaultCampaignForUpdate() {
-        final RewardCampaign existingCampaign = rewardCampaignRepository.findByCodeForUpdate(defaultCampaignCode).orElse(null);
-        if (existingCampaign != null) {
-            return existingCampaign;
-        }
+        return recordOperationDuration("get_or_create_default_campaign_for_update", () -> {
+            final RewardCampaign existingCampaign = rewardCampaignRepository.findByCodeForUpdate(defaultCampaignCode).orElse(null);
+            if (existingCampaign != null) {
+                return existingCampaign;
+            }
 
-        try {
-            return rewardCampaignRepository.save(RewardCampaign.defaultCampaign(
-                    defaultCampaignCode,
-                    defaultCampaignName,
-                    pointsPerApproval,
-                    maxTotalPoints
-            ));
-        } catch (DataIntegrityViolationException exception) {
-            return rewardCampaignRepository.findByCodeForUpdate(defaultCampaignCode)
-                    .orElseThrow(() -> new ConflictException(ErrorCode.CONFLICT));
-        }
+            try {
+                return rewardCampaignRepository.save(RewardCampaign.defaultCampaign(
+                        defaultCampaignCode,
+                        defaultCampaignName,
+                        pointsPerApproval,
+                        maxTotalPoints
+                ));
+            } catch (DataIntegrityViolationException exception) {
+                return rewardCampaignRepository.findByCodeForUpdate(defaultCampaignCode)
+                        .orElseThrow(() -> new ConflictException(ErrorCode.CONFLICT));
+            }
+        });
     }
 
     private RewardApprovalAccrualState deriveAccrualState(final ModerationStatus moderationStatus,
@@ -286,5 +301,27 @@ public class RewardLedgerService {
         }
 
         rewardCampaignParticipationRepository.save(participation);
+    }
+
+    private <T> T recordOperationDuration(final String operation, final Supplier<T> action) {
+        final long startedAt = System.nanoTime();
+        String outcome = "success";
+
+        try {
+            return action.get();
+        } catch (RuntimeException exception) {
+            outcome = resolveOutcome(exception);
+            throw exception;
+        } finally {
+            rewardMetricsRecorder.recordOperationDuration(operation, outcome, System.nanoTime() - startedAt);
+        }
+    }
+
+    private String resolveOutcome(final RuntimeException exception) {
+        if (exception instanceof BusinessException businessException) {
+            return businessException.getErrorCode().name().toLowerCase(Locale.ROOT);
+        }
+
+        return exception.getClass().getSimpleName().toLowerCase(Locale.ROOT);
     }
 }
