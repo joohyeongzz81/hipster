@@ -67,7 +67,9 @@ public class UserWeightingService {
                     COALESCE(AVG(LENGTH(content) - LENGTH(REPLACE(content, ' ', '')) + 1), 0.0) AS reviewAvgLength, 
                     MAX(created_at) AS maxReviewDate 
                  FROM reviews 
-                 WHERE user_id = ?) v_stats
+                 WHERE user_id = ?
+                   AND status = 'ACTIVE'
+                   AND is_published = TRUE) v_stats
             """;
 
         UserWeightingStatsDto stats = jdbcTemplate.queryForObject(sql, (rs, rowNum) -> new UserWeightingStatsDto(

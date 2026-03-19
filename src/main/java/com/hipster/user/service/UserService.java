@@ -9,6 +9,7 @@ import com.hipster.moderation.repository.ModerationQueueRepository;
 import com.hipster.rating.repository.RatingRepository;
 import com.hipster.review.repository.ReviewRepository;
 import com.hipster.user.domain.User;
+import com.hipster.user.domain.UserWeightStats;
 import com.hipster.user.dto.request.ChangePasswordRequest;
 import com.hipster.user.dto.request.DeleteAccountRequest;
 import com.hipster.user.dto.request.UpdateProfileRequest;
@@ -44,7 +45,8 @@ public class UserService {
         }
 
         final User user = findUserOrThrow(userId);
-        return WeightingResponse.from(user);
+        final UserWeightStats weightStats = userWeightStatsRepository.findById(userId).orElse(null);
+        return WeightingResponse.from(user, weightStats);
     }
 
     @Transactional

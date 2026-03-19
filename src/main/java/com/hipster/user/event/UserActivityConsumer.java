@@ -35,7 +35,8 @@ public class UserActivityConsumer {
             if (event.isDeleted()) {
                 log.info("Consumer [UserActivity]: Ignoring activity update for rating deletion");
             } else {
-                userRepository.updateLastActiveDate(event.userId(), LocalDateTime.now());
+                final LocalDateTime lastActiveAt = event.eventTs() != null ? event.eventTs() : LocalDateTime.now();
+                userRepository.updateLastActiveDate(event.userId(), lastActiveAt);
             }
             
             // 정상 처리 후 수동 ACK (메시지 증발 방지용)

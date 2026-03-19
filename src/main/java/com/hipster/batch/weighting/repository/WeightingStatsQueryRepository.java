@@ -42,7 +42,9 @@ public class WeightingStatsQueryRepository {
             LEFT JOIN (
                 SELECT user_id, COUNT(*) AS reviewCount, COALESCE(AVG(LENGTH(content) - LENGTH(REPLACE(content, ' ', '')) + 1), 0.0) AS reviewAvgLength, MAX(created_at) AS maxReviewDate 
                 FROM reviews 
-                WHERE user_id IN (:userIds) 
+                WHERE user_id IN (:userIds)
+                  AND status = 'ACTIVE'
+                  AND is_published = TRUE
                 GROUP BY user_id
             ) v_stats ON u.id = v_stats.user_id
             WHERE u.id IN (:userIds)

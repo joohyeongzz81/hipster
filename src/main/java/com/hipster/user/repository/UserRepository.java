@@ -22,6 +22,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByUsername(String username);
 
     @Modifying(clearAutomatically = true)
-    @Query("UPDATE User u SET u.lastActiveDate = :now WHERE u.id = :userId")
-    void updateLastActiveDate(@Param("userId") Long userId, @Param("now") LocalDateTime now);
+    @Query("UPDATE User u SET u.lastActiveDate = :lastActiveDate WHERE u.id = :userId")
+    void updateLastActiveDate(@Param("userId") Long userId, @Param("lastActiveDate") LocalDateTime lastActiveDate);
 }
