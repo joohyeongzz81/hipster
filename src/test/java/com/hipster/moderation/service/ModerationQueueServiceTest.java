@@ -21,7 +21,7 @@ import com.hipster.moderation.dto.response.UserModerationSubmissionResponse;
 import com.hipster.moderation.metrics.ModerationMetricsRecorder;
 import com.hipster.moderation.repository.ModerationAuditTrailRepository;
 import com.hipster.moderation.repository.ModerationQueueRepository;
-import com.hipster.reward.service.RewardLedgerService;
+import com.hipster.reward.service.RewardAccrualOutboxService;
 import com.hipster.release.domain.Release;
 import com.hipster.release.domain.ReleaseType;
 import com.hipster.release.repository.ReleaseRepository;
@@ -101,7 +101,7 @@ class ModerationQueueServiceTest {
     private ReviewRepository reviewRepository;
 
     @Mock
-    private RewardLedgerService rewardLedgerService;
+    private RewardAccrualOutboxService rewardAccrualOutboxService;
 
     @Mock
     private ObjectMapper objectMapper;
@@ -542,6 +542,7 @@ class ModerationQueueServiceTest {
                 .content("A".repeat(60))
                 .isPublished(false)
                 .build();
+        ReflectionTestUtils.setField(queueItem, "id", queueId);
 
         given(moderationQueueRepository.findById(queueId)).willReturn(Optional.of(queueItem));
         given(reviewRepository.findById(200L)).willReturn(Optional.of(review));
@@ -551,6 +552,7 @@ class ModerationQueueServiceTest {
         assertThat(review.getIsPublished()).isTrue();
         assertThat(queueItem.getStatus()).isEqualTo(ModerationStatus.APPROVED);
         verify(moderationQueueRepository).save(queueItem);
+        verify(rewardAccrualOutboxService).enqueueApprovedContribution(queueItem);
         verify(moderationAuditTrailRepository).save(argThat(audit ->
                 audit.getEventType() == ModerationAuditEventType.APPROVED
                         && moderatorId.equals(audit.getActorId())

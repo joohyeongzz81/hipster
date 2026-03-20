@@ -61,10 +61,26 @@ public class RewardLedgerService {
     private final RewardMetricsRecorder rewardMetricsRecorder;
 
     @Transactional
+    public RewardLedgerEntry accrueApprovedContribution(final Long approvalId) {
+        final ModerationQueue approvedItem = moderationQueueRepository.findById(approvalId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.MODERATION_ITEM_NOT_FOUND));
+
+        return accrueApprovedContribution(approvedItem);
+    }
+
+    @Transactional
     public RewardLedgerEntry accrueApprovedContribution(final ModerationQueue approvedItem) {
         return recordOperationDuration("accrue_approved_contribution", () -> {
             validateApprovalInput(approvedItem);
             rewardMetricsRecorder.recordApprovedInput();
+
+            final RewardLedgerEntry preexistingEntry = rewardLedgerEntryRepository
+                    .findByApprovalIdAndCampaignCodeAndEntryType(approvedItem.getId(), defaultCampaignCode, RewardLedgerEntryType.ACCRUAL)
+                    .orElse(null);
+            if (preexistingEntry != null) {
+                rewardMetricsRecorder.recordDecision("duplicate_input_ignored");
+                return preexistingEntry;
+            }
 
             final RewardCampaign campaign = getOrCreateDefaultCampaignForUpdate();
             final RewardLedgerEntry existingEntry = rewardLedgerEntryRepository
@@ -179,6 +195,13 @@ public class RewardLedgerService {
 
             final RewardCampaign campaign = rewardCampaignRepository.findByCodeForUpdate(defaultCampaignCode)
                     .orElseThrow(() -> new NotFoundException(ErrorCode.REWARD_CAMPAIGN_NOT_FOUND));
+            final RewardLedgerEntry existingReversalAfterLock = rewardLedgerEntryRepository
+                    .findByApprovalIdAndCampaignCodeAndEntryType(approvalId, defaultCampaignCode, RewardLedgerEntryType.REVERSAL)
+                    .orElse(null);
+            if (existingReversalAfterLock != null) {
+                rewardMetricsRecorder.recordDecision("duplicate_reversal_ignored");
+                return getApprovalAccrual(approvalId);
+            }
             campaign.reverse(accrualEntry.getPointsDelta());
             final long currentCampaignPoints = rewardLedgerEntryRepository
                     .sumPointsDeltaByUserIdAndCampaignCode(accrualEntry.getUserId(), accrualEntry.getCampaignCode());

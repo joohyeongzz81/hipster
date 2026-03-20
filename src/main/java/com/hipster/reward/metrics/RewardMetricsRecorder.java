@@ -20,6 +20,11 @@ public class RewardMetricsRecorder {
     private final Map<String, Counter> decisionCounters = new ConcurrentHashMap<>();
     private final Map<String, Counter> ledgerEntryCounters = new ConcurrentHashMap<>();
     private final Map<String, Timer> operationTimers = new ConcurrentHashMap<>();
+    private final Map<String, Counter> asyncAccrualCounters = new ConcurrentHashMap<>();
+    private final Map<String, Counter> outboxCreatedCounters = new ConcurrentHashMap<>();
+    private final Map<String, Counter> outboxPublishCounters = new ConcurrentHashMap<>();
+    private final Map<String, Counter> outboxConsumeCounters = new ConcurrentHashMap<>();
+    private final Map<String, Counter> outboxRecoverCounters = new ConcurrentHashMap<>();
 
     public RewardMetricsRecorder(final MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
@@ -68,6 +73,61 @@ public class RewardMetricsRecorder {
         );
 
         timer.record(durationNanos, TimeUnit.NANOSECONDS);
+    }
+
+    public void recordAsyncAccrualProcessing(final String outcome) {
+        final String normalizedOutcome = outcome.toLowerCase(Locale.ROOT);
+        final Counter counter = asyncAccrualCounters.computeIfAbsent(normalizedOutcome, key ->
+                Counter.builder("reward.async.accrual.processing")
+                        .description("Reward async accrual processing count")
+                        .tag("outcome", key)
+                        .register(meterRegistry)
+        );
+        counter.increment();
+    }
+
+    public void recordOutboxCreated(final String outcome) {
+        final String normalizedOutcome = outcome.toLowerCase(Locale.ROOT);
+        final Counter counter = outboxCreatedCounters.computeIfAbsent(normalizedOutcome, key ->
+                Counter.builder("reward.outbox.created")
+                        .description("Reward accrual outbox creation count")
+                        .tag("outcome", key)
+                        .register(meterRegistry)
+        );
+        incrementAfterCommit(counter);
+    }
+
+    public void recordOutboxPublish(final String outcome) {
+        final String normalizedOutcome = outcome.toLowerCase(Locale.ROOT);
+        final Counter counter = outboxPublishCounters.computeIfAbsent(normalizedOutcome, key ->
+                Counter.builder("reward.outbox.publish")
+                        .description("Reward accrual outbox publish count")
+                        .tag("outcome", key)
+                        .register(meterRegistry)
+        );
+        counter.increment();
+    }
+
+    public void recordOutboxConsume(final String outcome) {
+        final String normalizedOutcome = outcome.toLowerCase(Locale.ROOT);
+        final Counter counter = outboxConsumeCounters.computeIfAbsent(normalizedOutcome, key ->
+                Counter.builder("reward.outbox.consume")
+                        .description("Reward accrual outbox consumer count")
+                        .tag("outcome", key)
+                        .register(meterRegistry)
+        );
+        counter.increment();
+    }
+
+    public void recordOutboxRecover(final String outcome) {
+        final String normalizedOutcome = outcome.toLowerCase(Locale.ROOT);
+        final Counter counter = outboxRecoverCounters.computeIfAbsent(normalizedOutcome, key ->
+                Counter.builder("reward.outbox.recover")
+                        .description("Reward accrual outbox recovery count")
+                        .tag("outcome", key)
+                        .register(meterRegistry)
+        );
+        counter.increment();
     }
 
     private void incrementAfterCommit(final Counter counter) {

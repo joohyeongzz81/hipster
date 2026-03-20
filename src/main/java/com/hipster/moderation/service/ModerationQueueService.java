@@ -27,8 +27,8 @@ import com.hipster.global.dto.response.PagedResponse;
 import com.hipster.moderation.metrics.ModerationMetricsRecorder;
 import com.hipster.moderation.repository.ModerationAuditTrailRepository;
 import com.hipster.moderation.repository.ModerationQueueRepository;
+import com.hipster.reward.service.RewardAccrualOutboxService;
 import com.hipster.release.repository.ReleaseRepository;
-import com.hipster.reward.service.RewardLedgerService;
 import com.hipster.review.repository.ReviewRepository;
 import com.hipster.user.domain.User;
 import com.hipster.user.repository.UserRepository;
@@ -77,7 +77,7 @@ public class ModerationQueueService {
     private final ArtistRepository artistRepository;
     private final GenreRepository genreRepository;
     private final ReviewRepository reviewRepository;
-    private final RewardLedgerService rewardLedgerService;
+    private final RewardAccrualOutboxService rewardAccrualOutboxService;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -229,7 +229,6 @@ public class ModerationQueueService {
             applyApprovalEntityState(item);
             item.approve(comment);
             moderationQueueRepository.save(item);
-            rewardLedgerService.accrueApprovedContribution(item);
             recordAuditTrail(
                     item.getId(),
                     ModerationAuditEventType.APPROVED,
@@ -242,6 +241,7 @@ public class ModerationQueueService {
                     comment,
                     occurredAt
             );
+            rewardAccrualOutboxService.enqueueApprovedContribution(item);
         } catch (RuntimeException exception) {
             outcome = resolveApproveOutcome(exception);
             throw exception;

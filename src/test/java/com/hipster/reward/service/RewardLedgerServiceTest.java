@@ -114,15 +114,38 @@ class RewardLedgerServiceTest {
     }
 
     @Test
+    @DisplayName("approvalId 기반 적립 요청은 moderation 항목을 조회한 뒤 기존 적립 로직으로 위임한다")
+    void accrueApprovedContribution_ByApprovalId_LoadsApprovalAndAccrues() {
+        ModerationQueue approvedItem = approvedQueue(61L, 610L);
+        RewardCampaign campaign = defaultCampaign(0L);
+
+        given(moderationQueueRepository.findById(approvedItem.getId())).willReturn(Optional.of(approvedItem));
+        given(rewardCampaignRepository.findByCodeForUpdate(DEFAULT_CAMPAIGN_CODE)).willReturn(Optional.of(campaign));
+        given(rewardLedgerEntryRepository.findByApprovalIdAndCampaignCodeAndEntryType(
+                approvedItem.getId(), DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.ACCRUAL
+        )).willReturn(Optional.empty());
+        given(rewardLedgerEntryRepository.save(any(RewardLedgerEntry.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        given(rewardCampaignParticipationRepository.findByCampaignCodeAndUserId(
+                DEFAULT_CAMPAIGN_CODE, approvedItem.getSubmitterId()
+        )).willReturn(Optional.empty());
+        given(rewardCampaignParticipationRepository.save(any(RewardCampaignParticipation.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        RewardLedgerEntry entry = rewardLedgerService.accrueApprovedContribution(approvedItem.getId());
+
+        assertThat(entry.getApprovalId()).isEqualTo(approvedItem.getId());
+        assertThat(entry.getEntryStatus()).isEqualTo(RewardLedgerEntryStatus.ACCRUED);
+    }
+
+    @Test
     @DisplayName("같은 승인 입력이 다시 들어오면 기존 적립 결과를 반환하고 중복 생성하지 않는다")
     void accrueApprovedContribution_DuplicateInput_ReturnsExistingEntry() {
         ModerationQueue approvedItem = approvedQueue(2L, 11L);
-        RewardCampaign campaign = defaultCampaign(POINTS_PER_APPROVAL);
         RewardLedgerEntry existingEntry = RewardLedgerEntry.accrued(
                 approvedItem.getId(), approvedItem.getSubmitterId(), DEFAULT_CAMPAIGN_CODE, POINTS_PER_APPROVAL
         );
 
-        given(rewardCampaignRepository.findByCodeForUpdate(DEFAULT_CAMPAIGN_CODE)).willReturn(Optional.of(campaign));
         given(rewardLedgerEntryRepository.findByApprovalIdAndCampaignCodeAndEntryType(
                 approvedItem.getId(), DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.ACCRUAL
         )).willReturn(Optional.of(existingEntry));
@@ -130,9 +153,32 @@ class RewardLedgerServiceTest {
         RewardLedgerEntry result = rewardLedgerService.accrueApprovedContribution(approvedItem);
 
         assertThat(result).isSameAs(existingEntry);
-        assertThat(campaign.getGrantedPoints()).isEqualTo(POINTS_PER_APPROVAL);
 
         verify(rewardMetricsRecorder).recordApprovedInput();
+        verify(rewardMetricsRecorder).recordDecision("duplicate_input_ignored");
+        verify(rewardCampaignRepository, never()).findByCodeForUpdate(DEFAULT_CAMPAIGN_CODE);
+        verify(rewardLedgerEntryRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("중복 적립이 캠페인 락 이후에 확인되면 기존 결과를 반환하고 추가 적립하지 않는다")
+    void accrueApprovedContribution_DuplicateDetectedAfterLock_ReturnsExistingEntry() {
+        ModerationQueue approvedItem = approvedQueue(23L, 201L);
+        RewardCampaign campaign = defaultCampaign(POINTS_PER_APPROVAL);
+        RewardLedgerEntry existingEntry = RewardLedgerEntry.accrued(
+                approvedItem.getId(), approvedItem.getSubmitterId(), DEFAULT_CAMPAIGN_CODE, POINTS_PER_APPROVAL
+        );
+
+        given(rewardLedgerEntryRepository.findByApprovalIdAndCampaignCodeAndEntryType(
+                approvedItem.getId(), DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.ACCRUAL
+        )).willReturn(Optional.empty(), Optional.of(existingEntry));
+        given(rewardCampaignRepository.findByCodeForUpdate(DEFAULT_CAMPAIGN_CODE)).willReturn(Optional.of(campaign));
+
+        RewardLedgerEntry result = rewardLedgerService.accrueApprovedContribution(approvedItem);
+
+        assertThat(result).isSameAs(existingEntry);
+        assertThat(campaign.getGrantedPoints()).isEqualTo(POINTS_PER_APPROVAL);
+
         verify(rewardMetricsRecorder).recordDecision("duplicate_input_ignored");
         verify(rewardLedgerEntryRepository, never()).save(any());
     }
@@ -241,6 +287,34 @@ class RewardLedgerServiceTest {
         assertThat(reversalEntry.getEntryStatus()).isEqualTo(RewardLedgerEntryStatus.REVERSED);
         assertThat(reversalEntry.getPointsDelta()).isEqualTo(-POINTS_PER_APPROVAL);
         assertThat(reversalEntry.getReferenceEntryId()).isEqualTo(100L);
+    }
+
+    @Test
+    @DisplayName("이미 reversal이 있으면 캠페인 락 없이 기존 적립 상태를 반환한다")
+    void reverseApprovalAccrual_DuplicateReversal_ReturnsExistingStateWithoutLock() {
+        Long approvalId = 51L;
+        Long userId = 510L;
+        RewardLedgerEntry accrualEntry = RewardLedgerEntry.accrued(approvalId, userId, DEFAULT_CAMPAIGN_CODE, POINTS_PER_APPROVAL);
+        RewardLedgerEntry reversalEntry = RewardLedgerEntry.reversal(
+                approvalId, userId, DEFAULT_CAMPAIGN_CODE, POINTS_PER_APPROVAL, 5100L, "duplicate"
+        );
+        ModerationQueue approvedQueue = approvedQueue(approvalId, userId);
+
+        given(rewardLedgerEntryRepository.findByApprovalIdAndCampaignCodeAndEntryType(
+                approvalId, DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.ACCRUAL
+        )).willReturn(Optional.of(accrualEntry));
+        given(rewardLedgerEntryRepository.findByApprovalIdAndCampaignCodeAndEntryType(
+                approvalId, DEFAULT_CAMPAIGN_CODE, RewardLedgerEntryType.REVERSAL
+        )).willReturn(Optional.of(reversalEntry));
+        given(moderationQueueRepository.findById(approvalId)).willReturn(Optional.of(approvedQueue));
+        given(rewardLedgerEntryRepository.findAllByApprovalIdOrderByCreatedAtAsc(approvalId))
+                .willReturn(List.of(accrualEntry, reversalEntry));
+
+        RewardApprovalAccrualResponse response = rewardLedgerService.reverseApprovalAccrual(approvalId, "duplicate");
+
+        assertThat(response.accrualState()).isEqualTo(RewardApprovalAccrualState.REVERSED);
+        verify(rewardCampaignRepository, never()).findByCodeForUpdate(DEFAULT_CAMPAIGN_CODE);
+        verify(rewardMetricsRecorder).recordDecision("duplicate_reversal_ignored");
     }
 
     @Test
