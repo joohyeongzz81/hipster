@@ -1,6 +1,7 @@
 package com.hipster.rating.event;
 
 import com.hipster.global.config.RabbitMqConfig;
+import com.hipster.rating.metrics.RatingMetricsRecorder;
 import com.hipster.rating.service.RatingSummaryService;
 import com.rabbitmq.client.Channel;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import java.io.IOException;
 public class RatingSummaryConsumer {
 
     private final RatingSummaryService ratingSummaryService;
+    private final RatingMetricsRecorder ratingMetricsRecorder;
 
     @RabbitListener(
             id = "ratingSummaryListener",
@@ -31,19 +33,25 @@ public class RatingSummaryConsumer {
             @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag
     ) throws IOException {
         try {
-            log.info("Consumer [RatingSummary]: Processing releaseId={}", event.releaseId());
+            log.info("Consumer [RatingSummary]: Processing releaseId={}, userId={}, created={}, deleted={}",
+                    event.releaseId(), event.userId(), event.isCreated(), event.isDeleted());
             ratingSummaryService.applyRatingEvent(event);
             channel.basicAck(deliveryTag, false);
+            ratingMetricsRecorder.recordConsumer("processed");
             log.info("Consumer [RatingSummary]: Successfully ACKed deliveryTag={}", deliveryTag);
 
         } catch (IllegalArgumentException | IllegalStateException | DataIntegrityViolationException e) {
+            ratingMetricsRecorder.recordConsumer("permanent_failed");
             // [영구 실패] 데이터 자체의 오류 - 재처리해도 동일하게 실패하므로 DLQ로 라우팅 (Poison Pill 방어)
-            log.error("Consumer [RatingSummary]: Permanent failure. Discarding message to DLQ. deliveryTag={}, error={}", deliveryTag, e.getMessage());
+            log.error("Consumer [RatingSummary]: Permanent failure. Routing to DLQ. releaseId={}, userId={}, deliveryTag={}, created={}, deleted={}",
+                    event.releaseId(), event.userId(), deliveryTag, event.isCreated(), event.isDeleted(), e);
             channel.basicNack(deliveryTag, false, false);
 
         } catch (Exception e) {
+            ratingMetricsRecorder.recordConsumer("transient_failed");
             // [일시적 장애] DB 커넥션 오류 등 - 재처리 시 회복 가능성이 있으므로 큐에 반환 (requeue)
-            log.error("Consumer [RatingSummary]: Transient failure. Requeueing message. deliveryTag={}, error={}", deliveryTag, e.getMessage());
+            log.error("Consumer [RatingSummary]: Transient failure. Requeueing message. releaseId={}, userId={}, deliveryTag={}, created={}, deleted={}",
+                    event.releaseId(), event.userId(), deliveryTag, event.isCreated(), event.isDeleted(), e);
             channel.basicNack(deliveryTag, false, true);
         }
     }

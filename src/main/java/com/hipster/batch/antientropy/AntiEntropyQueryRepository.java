@@ -25,10 +25,20 @@ public class AntiEntropyQueryRepository {
     private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
     /**
-     * 대상 release_id 목록을 조회합니다. (ratings에 평점이 있는 앨범만)
+     * 대상 release_id 목록을 조회합니다.
+     * 원본 ratings 와 기존 summary 양쪽을 모두 본다.
+     * 그래야 마지막 평점 삭제 뒤 0건이 된 release 도 정리할 수 있다.
      */
     public List<Long> findAllReleaseIds() {
-        String sql = "SELECT DISTINCT release_id FROM ratings ORDER BY release_id";
+        String sql = """
+            SELECT release_id
+            FROM (
+                SELECT DISTINCT release_id FROM ratings
+                UNION
+                SELECT release_id FROM release_rating_summary
+            ) candidate_release_ids
+            ORDER BY release_id
+            """;
         return namedParameterJdbcTemplate.queryForList(sql, new MapSqlParameterSource(), Long.class);
     }
 
@@ -42,7 +52,23 @@ public class AntiEntropyQueryRepository {
     public void reconcileChunk(final List<Long> releaseIds, final LocalDateTime batchSyncedAt) {
         if (releaseIds == null || releaseIds.isEmpty()) return;
 
-        String sql = """
+        final MapSqlParameterSource params = new MapSqlParameterSource();
+        params.addValue("releaseIds", releaseIds);
+        params.addValue("batchSyncedAt", batchSyncedAt);
+
+        // 마지막 평점이 삭제되어 source-of-truth 에 더 이상 존재하지 않는 release summary 를 먼저 정리한다.
+        final String deleteSql = """
+            DELETE FROM release_rating_summary
+            WHERE release_id IN (:releaseIds)
+              AND release_id NOT IN (
+                  SELECT DISTINCT release_id
+                  FROM ratings
+                  WHERE release_id IN (:releaseIds)
+              )
+            """;
+        namedParameterJdbcTemplate.update(deleteSql, params);
+
+        final String upsertSql = """
             INSERT INTO release_rating_summary
                 (release_id, weighted_score_sum, weighted_count_sum,
                  total_rating_count, average_score, batch_synced_at)
@@ -64,12 +90,7 @@ public class AntiEntropyQueryRepository {
                 average_score      = VALUES(average_score),
                 batch_synced_at    = VALUES(batch_synced_at)
             """;
-
-        MapSqlParameterSource params = new MapSqlParameterSource();
-        params.addValue("releaseIds", releaseIds);
-        params.addValue("batchSyncedAt", batchSyncedAt);
-
-        namedParameterJdbcTemplate.update(sql, params);
+        namedParameterJdbcTemplate.update(upsertSql, params);
     }
 
     /**

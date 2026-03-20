@@ -1,6 +1,7 @@
 package com.hipster.batch.antientropy;
 
 import com.hipster.batch.antientropy.AntiEntropyQueryRepository;
+import com.hipster.rating.metrics.RatingMetricsRecorder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
@@ -27,6 +28,7 @@ import java.util.List;
 public class AntiEntropyBatchJob {
 
     private final AntiEntropyQueryRepository antiEntropyQueryRepository;
+    private final RatingMetricsRecorder ratingMetricsRecorder;
 
     @Scheduled(cron = "${hipster.batch.anti-entropy-cron:0 0 3 * * ?}")
     @SchedulerLock(name = "antiEntropyFullBatch", lockAtLeastFor = "30s", lockAtMostFor = "4h")
@@ -40,20 +42,42 @@ public class AntiEntropyBatchJob {
 
             log.info("[AntiEntropy] 대상 앨범 수={}, 청크 수={}", allReleaseIds.size(), chunks.size());
 
-            int processedChunks = 0;
-            for (final List<Long> chunk : chunks) {
-                antiEntropyQueryRepository.reconcileChunk(chunk, batchSyncedAt);
-                processedChunks++;
+            for (int chunkIndex = 0; chunkIndex < chunks.size(); chunkIndex++) {
+                final List<Long> chunk = chunks.get(chunkIndex);
+                try {
+                    antiEntropyQueryRepository.reconcileChunk(chunk, batchSyncedAt);
+                } catch (Exception e) {
+                    log.error("[AntiEntropy] 청크 실패 batchSyncedAt={}, chunkIndex={}, chunkSize={}, firstReleaseId={}, lastReleaseId={}",
+                            batchSyncedAt,
+                            chunkIndex + 1,
+                            chunk.size(),
+                            firstReleaseId(chunk),
+                            lastReleaseId(chunk),
+                            e);
+                    throw e;
+                }
+
+                final int processedChunks = chunkIndex + 1;
                 if (processedChunks % 10 == 0) {
                     log.info("[AntiEntropy] 진행 중: {}/{} 청크 완료", processedChunks, chunks.size());
                 }
             }
 
             log.info("[AntiEntropy] Full 재집계 완료. 총 처리 앨범 수={}", allReleaseIds.size());
+            ratingMetricsRecorder.recordAntiEntropy("success");
 
         } catch (Exception e) {
+            ratingMetricsRecorder.recordAntiEntropy("failed");
             log.error("[AntiEntropy] Full 재집계 실패. batchSyncedAt={}", batchSyncedAt, e);
         }
+    }
+
+    private Long firstReleaseId(final List<Long> chunk) {
+        return chunk == null || chunk.isEmpty() ? null : chunk.get(0);
+    }
+
+    private Long lastReleaseId(final List<Long> chunk) {
+        return chunk == null || chunk.isEmpty() ? null : chunk.get(chunk.size() - 1);
     }
 }
 
