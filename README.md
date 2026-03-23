@@ -30,8 +30,7 @@
 - 유저 50,000명 / 평점 5,000,000건 합성 데이터 기준 전체 가중치 재계산 배치: **921,000ms → 359,200ms**
 - 단일 릴리즈 평점 10,000건 기준 집계 조회: **806ms → 20ms**
 - 동일 릴리즈 100명 동시 평점 등록 기준 쓰기 응답 시간: **126ms → 12.95ms**
-- 500만 건 합성 데이터 기준 장르 필터 차트 조회: **65,442ms → 12,069ms**
-- 500만 건 합성 데이터 기준 Elasticsearch 미스 시 대체 조회: **4,790ms → 146ms**
+- 500만 건 합성 데이터 기준 장르 필터 차트 조회: **65,421ms → 178.37ms**
 - 500만 건 규모 합성 데이터 기준 차트 전체 재생성: **11.8분**
 - 차트 공개 반영: **296ms**
 
@@ -41,7 +40,7 @@
 
 - [가중치 재계산 시 쓰기 증폭 줄이기](portfolio/user-credibility-batch.md)
 - [평점 조회와 차트 배치가 함께 쓰는 공통 집계 계층 만들기](portfolio/rating-aggregation.md)
-- [차트 API 서빙을 Redis 캐시, Elasticsearch 검색, MySQL fallback으로 안정화하기](portfolio/chart-serving.md)
+- [차트 API 읽기 경로를 캐시·검색·fallback·메타데이터로 분리해 응답 병목 줄이기](portfolio/chart-serving.md)
 - [차트 배치 재생성과 공개를 분리해 안전한 publish 파이프라인 만들기](portfolio/chart-pipeline.md)
 - [검수 적체와 SLA를 다루는 운영형 moderation queue 만들기](portfolio/moderation-queue.md)
 - [승인과 적립 기록의 경계를 분리하고 Reward Ledger를 유실·중복 없이 관리하기](portfolio/reward-ledger.md)
