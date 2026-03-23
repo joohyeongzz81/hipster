@@ -58,7 +58,7 @@ public class ChartService {
 
         final TopChartResponse response = chartResponseAssembler.assemble(
                 buildChartTitle(size, filter),
-                chartPublishedVersionService.getPublishedVersionOrLegacy(),
+                chartPublishedVersionService.getPublishedVersion(),
                 lastUpdated,
                 chartScores
         );

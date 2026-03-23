@@ -84,7 +84,7 @@ public class ChartPublishOrchestratorService {
 
             final var publishedState = chartPublishStateService.markPublished(version);
             chartPublishedVersionService.cachePublishedVersion(publishedState.getCurrentVersion());
-            evictLegacyChartCache();
+            evictChartCache();
             chartLastUpdatedService.cacheLastUpdated(publishedState.getLogicalAsOfAt());
         } catch (Exception e) {
             log.error("[ChartPublish] publish failed. version={}", version, e);
@@ -110,7 +110,7 @@ public class ChartPublishOrchestratorService {
         }
         final var rolledBackState = chartPublishStateService.markRolledBack(state.getCurrentVersion(), reason);
         chartPublishedVersionService.cachePublishedVersion(rolledBackState.getCurrentVersion());
-        evictLegacyChartCache();
+        evictChartCache();
         if (rolledBackState.getLogicalAsOfAt() != null) {
             chartLastUpdatedService.cacheLastUpdated(rolledBackState.getLogicalAsOfAt());
         }
@@ -122,7 +122,7 @@ public class ChartPublishOrchestratorService {
                 .orElse(LocalDateTime.now());
     }
 
-    private void evictLegacyChartCache() {
+    private void evictChartCache() {
         final Set<String> keys = redisTemplate.keys("chart:v1:*");
         if (keys != null && !keys.isEmpty()) {
             redisTemplate.delete(keys);

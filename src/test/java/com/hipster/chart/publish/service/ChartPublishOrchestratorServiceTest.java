@@ -47,7 +47,6 @@ class ChartPublishOrchestratorServiceTest {
     @DisplayName("publish 성공 시 projection, alias, metadata가 published version 기준으로 반영된다")
     void publishVersion_updatesProjectionAliasAndMetadataInOrder() {
         final ChartPublishProperties properties = new ChartPublishProperties();
-        properties.setEnabled(true);
         properties.setChartName("weekly_chart");
 
         final String version = "v20260314153000000";
@@ -62,7 +61,7 @@ class ChartPublishOrchestratorServiceTest {
 
         given(chartPublishStateService.markPublishing(version)).willReturn(publishingState);
         given(chartPublishStateService.markPublished(version)).willReturn(publishedState);
-        given(redisTemplate.keys("chart:v1:*")).willReturn(Set.of("chart:v1:legacy:all:page:0"));
+        given(redisTemplate.keys("chart:v1:*")).willReturn(Set.of("chart:v1:v20260314101010000:all:page:0"));
 
         final ChartPublishOrchestratorService service = new ChartPublishOrchestratorService(
                 properties,
@@ -81,7 +80,7 @@ class ChartPublishOrchestratorServiceTest {
         verify(chartElasticsearchIndexService).publishCandidateAlias(version);
         verify(chartPublishStateService).markPublished(version);
         verify(chartPublishedVersionService).cachePublishedVersion(version);
-        verify(redisTemplate).delete(Set.of("chart:v1:legacy:all:page:0"));
+        verify(redisTemplate).delete(Set.of("chart:v1:v20260314101010000:all:page:0"));
         verify(chartLastUpdatedService).cacheLastUpdated(logicalAsOfAt);
     }
 }

@@ -52,7 +52,6 @@ import static org.mockito.Mockito.mock;
         "spring.batch.jdbc.initialize-schema=always",
         "spring.rabbitmq.listener.simple.auto-startup=false",
         "spring.rabbitmq.listener.direct.auto-startup=false",
-        "chart.publish.enabled=true",
         "chart.publish.chart-name=weekly_chart"
 })
 @Testcontainers
@@ -154,7 +153,7 @@ class ChartPublishFailurePathIntegrationTest {
         assertThat(state.getCandidateVersion()).isNotBlank();
         assertThat(state.getLastValidationStatus()).isEqualTo(ChartValidationStatus.FAILED);
         assertThat(state.getStatus().name()).isNotEqualTo("PUBLISHED");
-        assertThat(chartPublishedVersionService.getPublishedVersionOrLegacy()).isEqualTo("v20260314100000000");
+        assertThat(chartPublishedVersionService.getPublishedVersion()).isEqualTo("v20260314100000000");
 
         verify(valueOperations, never()).set(anyString(), anyString());
         verify(chartElasticsearchIndexService, never()).publishCandidateAlias(anyString());
@@ -188,7 +187,7 @@ class ChartPublishFailurePathIntegrationTest {
 
         assertThat(state.getCurrentVersion()).isEqualTo(version);
         assertThat(state.getLogicalAsOfAt()).isEqualTo(logicalAsOfAt);
-        assertThat(chartPublishedVersionService.getPublishedVersionOrLegacy()).isEqualTo(version);
+        assertThat(chartPublishedVersionService.getPublishedVersion()).isEqualTo(version);
         assertThat(chartLastUpdatedService.getLastUpdated()).isEqualTo(logicalAsOfAt);
         assertThat(countRows("chart_scores")).isEqualTo(1L);
     }

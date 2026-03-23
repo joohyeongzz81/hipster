@@ -1,6 +1,5 @@
 package com.hipster.chart.service;
 
-import com.hipster.chart.config.ChartPublishProperties;
 import com.hipster.chart.publish.service.ChartPublishStateService;
 import com.hipster.chart.repository.ChartScoreRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +21,6 @@ public class ChartLastUpdatedService {
 
     private final StringRedisTemplate redisTemplate;
     private final ChartScoreRepository chartScoreRepository;
-    private final ChartPublishProperties chartPublishProperties;
     private final ChartPublishStateService chartPublishStateService;
 
     @Transactional(readOnly = true)
@@ -64,12 +62,7 @@ public class ChartLastUpdatedService {
     }
 
     private LocalDateTime resolveAuthoritativeLastUpdated() {
-        if (chartPublishProperties.isEnabled()) {
-            return chartPublishStateService.getCurrentLogicalAsOfAt()
-                    .orElseGet(() -> chartScoreRepository.findMaxLastUpdated().orElse(LocalDateTime.now()));
-        }
-
-        return chartScoreRepository.findMaxLastUpdated()
-                .orElse(LocalDateTime.now());
+        return chartPublishStateService.getCurrentLogicalAsOfAt()
+                .orElseGet(() -> chartScoreRepository.findMaxLastUpdated().orElse(LocalDateTime.now()));
     }
 }

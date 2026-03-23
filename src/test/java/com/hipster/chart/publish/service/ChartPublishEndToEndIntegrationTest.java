@@ -61,7 +61,6 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.batch.jdbc.initialize-schema=always",
         "spring.rabbitmq.listener.simple.auto-startup=false",
         "spring.rabbitmq.listener.direct.auto-startup=false",
-        "chart.publish.enabled=true",
         "chart.publish.chart-name=weekly_chart",
         "chart.search.index-name=chart_scores_publish_e2e_it"
 })
@@ -177,7 +176,7 @@ class ChartPublishEndToEndIntegrationTest {
         final LocalDateTime baselineLogicalAsOfAt = LocalDateTime.of(2026, 3, 14, 11, 11, 11);
         publishBaselineVersion(baselineVersion, baselineLogicalAsOfAt, sampleScore(1001L, 4.1));
 
-        redisTemplate.opsForValue().set("chart:v1:legacy:all:page:0", "{\"stale\":true}");
+        redisTemplate.opsForValue().set("chart:v1:v20260314101010000:all:page:0", "{\"stale\":true}");
         seedReleaseAndSummary(6006L, LocalDateTime.of(2026, 3, 14, 22, 22, 22));
 
         final JobExecution execution = jobLauncher.run(
@@ -223,9 +222,9 @@ class ChartPublishEndToEndIntegrationTest {
                 .isEqualTo(state.getCurrentVersion());
         assertThat(redisTemplate.opsForValue().get(ChartLastUpdatedService.LAST_UPDATED_KEY))
                 .isEqualTo(state.getLogicalAsOfAt().toString());
-        assertThat(redisTemplate.opsForValue().get("chart:v1:legacy:all:page:0")).isNull();
+        assertThat(redisTemplate.opsForValue().get("chart:v1:v20260314101010000:all:page:0")).isNull();
 
-        assertThat(chartPublishedVersionService.getPublishedVersionOrLegacy()).isEqualTo(state.getCurrentVersion());
+        assertThat(chartPublishedVersionService.getPublishedVersion()).isEqualTo(state.getCurrentVersion());
         assertThat(chartLastUpdatedService.getLastUpdated()).isEqualTo(state.getLogicalAsOfAt());
         assertThat(chartCacheKeyGenerator.generateKey(null, 0))
                 .isEqualTo("chart:v1:" + state.getCurrentVersion() + ":all:page:0");

@@ -57,7 +57,6 @@ import static org.mockito.Mockito.verify;
         "spring.batch.jdbc.initialize-schema=always",
         "spring.rabbitmq.listener.simple.auto-startup=false",
         "spring.rabbitmq.listener.direct.auto-startup=false",
-        "chart.publish.enabled=true",
         "chart.publish.chart-name=weekly_chart",
         "chart.search.index-name=chart_scores_publish_job_it"
 })
@@ -194,7 +193,7 @@ class ChartPublishJobIntegrationTest {
         assertThat(countRows("chart_scores")).isEqualTo(1L);
         assertThat(findSingleReleaseId("chart_scores")).isEqualTo(2002L);
         assertThat(resolveAliasTarget()).isEqualTo(chartElasticsearchIndexService.buildCandidateIndexName(state.getCurrentVersion()));
-        assertThat(chartPublishedVersionService.getPublishedVersionOrLegacy()).isEqualTo(state.getCurrentVersion());
+        assertThat(chartPublishedVersionService.getPublishedVersion()).isEqualTo(state.getCurrentVersion());
         assertThat(chartLastUpdatedService.getLastUpdated()).isEqualTo(LocalDateTime.of(2026, 3, 14, 18, 0));
 
         verify(valueOperations, atLeastOnce()).set(chartPublishProperties.getPublishedVersionCacheKey(), state.getCurrentVersion());

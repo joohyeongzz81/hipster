@@ -4,7 +4,6 @@ import com.hipster.batch.chart.benchmark.ChartProjectionWriteMode;
 import com.hipster.batch.chart.dto.ChartScoreDto;
 import com.hipster.batch.chart.repository.ChartReleaseMetadataQueryRepository;
 import com.hipster.batch.chart.repository.ChartScoreQueryRepository;
-import com.hipster.chart.config.ChartPublishProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.item.Chunk;
@@ -24,7 +23,6 @@ public class ChartItemWriter implements ItemWriter<ChartScoreDto> {
 
     private final ChartScoreQueryRepository chartScoreQueryRepository;
     private final ChartReleaseMetadataQueryRepository chartReleaseMetadataQueryRepository;
-    private final ChartPublishProperties chartPublishProperties;
 
     @Override
     public void write(final @NonNull Chunk<? extends ChartScoreDto> chunk) {
@@ -81,9 +79,7 @@ public class ChartItemWriter implements ItemWriter<ChartScoreDto> {
     }
 
     private ChartProjectionWriteMode defaultWriteMode() {
-        return chartPublishProperties.isEnabled()
-                ? ChartProjectionWriteMode.PUBLISH_STAGE
-                : ChartProjectionWriteMode.UPSERT;
+        return ChartProjectionWriteMode.PUBLISH_STAGE;
     }
 
     private ChartScoreDto enrich(final ChartScoreDto dto,

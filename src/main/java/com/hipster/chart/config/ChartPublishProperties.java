@@ -12,7 +12,6 @@ import org.springframework.util.StringUtils;
 @ConfigurationProperties(prefix = "chart.publish")
 public class ChartPublishProperties {
 
-    private boolean enabled = false;
     private String chartName = "weekly_chart";
     private String stageTableName = "chart_scores_stage";
     private String previousTableName = "chart_scores_prev";

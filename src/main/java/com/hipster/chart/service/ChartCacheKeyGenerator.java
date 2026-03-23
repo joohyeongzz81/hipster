@@ -1,6 +1,5 @@
 package com.hipster.chart.service;
 
-import com.hipster.chart.config.ChartPublishProperties;
 import com.hipster.chart.publish.service.ChartPublishedVersionService;
 import com.hipster.chart.dto.request.ChartFilterRequest;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +14,6 @@ import java.util.stream.Collectors;
 public class ChartCacheKeyGenerator {
 
     private static final String CACHE_PREFIX = "chart:v1:";
-    private final ChartPublishProperties chartPublishProperties;
     private final ChartPublishedVersionService chartPublishedVersionService;
 
     public String generateKey(final ChartFilterRequest filter, final int page) {
@@ -46,10 +44,7 @@ public class ChartCacheKeyGenerator {
     }
 
     private String resolveCachePrefix() {
-        if (!chartPublishProperties.isEnabled()) {
-            return CACHE_PREFIX;
-        }
-        return CACHE_PREFIX + chartPublishedVersionService.getPublishedVersionOrLegacy() + ":";
+        return CACHE_PREFIX + chartPublishedVersionService.getPublishedVersion() + ":";
     }
 
     private boolean isFilterEmpty(final ChartFilterRequest filter) {

@@ -1,6 +1,5 @@
 package com.hipster.chart.service;
 
-import com.hipster.chart.config.ChartPublishProperties;
 import com.hipster.chart.publish.service.ChartPublishStateService;
 import com.hipster.chart.repository.ChartScoreRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -35,11 +34,8 @@ class ChartLastUpdatedServiceTest {
     private ChartPublishStateService chartPublishStateService;
 
     @Test
-    @DisplayName("publish 모드에서는 logical_as_of_at을 authoritative lastUpdated로 사용한다")
-    void refreshFromDatabase_usesPublishedLogicalAsOfWhenPublishEnabled() {
-        final ChartPublishProperties properties = new ChartPublishProperties();
-        properties.setEnabled(true);
-
+    @DisplayName("logical_as_of_at을 authoritative lastUpdated로 사용한다")
+    void refreshFromDatabase_usesPublishedLogicalAsOf() {
         final LocalDateTime logicalAsOfAt = LocalDateTime.of(2026, 3, 14, 9, 30);
         given(chartPublishStateService.getCurrentLogicalAsOfAt()).willReturn(Optional.of(logicalAsOfAt));
         given(redisTemplate.opsForValue()).willReturn(valueOperations);
@@ -47,7 +43,6 @@ class ChartLastUpdatedServiceTest {
         final ChartLastUpdatedService service = new ChartLastUpdatedService(
                 redisTemplate,
                 chartScoreRepository,
-                properties,
                 chartPublishStateService
         );
 

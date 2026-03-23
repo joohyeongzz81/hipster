@@ -5,11 +5,9 @@ import com.hipster.batch.chart.step.ChartItemProcessor;
 import com.hipster.batch.chart.step.ChartItemReaderConfig;
 import com.hipster.batch.chart.step.ChartItemWriter;
 import com.hipster.chart.config.ChartAlgorithmProperties;
-import com.hipster.chart.config.ChartPublishProperties;
 import com.hipster.chart.publish.service.ChartPublishOrchestratorService;
 import com.hipster.chart.publish.service.ChartPublishStateService;
 import com.hipster.chart.service.ChartElasticsearchIndexService;
-import com.hipster.chart.service.ChartLastUpdatedService;
 import com.hipster.rating.domain.ReleaseRatingSummary;
 import com.hipster.rating.repository.ReleaseRatingSummaryRepository;
 import jakarta.persistence.EntityManagerFactory;
@@ -19,7 +17,6 @@ import org.springframework.batch.core.ChunkListener;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.job.builder.JobBuilder;
-import org.springframework.batch.core.job.builder.SimpleJobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.builder.StepBuilder;
@@ -28,12 +25,9 @@ import org.springframework.batch.item.database.support.SqlPagingQueryProviderFac
 import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.orm.jpa.JpaTransactionManager;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.Set;
 
 import static com.hipster.batch.chart.step.ChartItemProcessor.GLOBAL_AVG_KEY;
 
@@ -48,36 +42,23 @@ public class ChartJobConfig {
     private final EntityManagerFactory entityManagerFactory;
     private final ReleaseRatingSummaryRepository releaseRatingSummaryRepository;
     private final ChartAlgorithmProperties chartAlgorithmProperties;
-    private final ChartPublishProperties chartPublishProperties;
     private final ChartPublishOrchestratorService chartPublishOrchestratorService;
     private final ChartPublishStateService chartPublishStateService;
     private final ChartItemReaderConfig readerConfig;
     private final ChartItemProcessor processor;
     private final ChartItemWriter writer;
     private final SqlPagingQueryProviderFactoryBean chartQueryProvider;
-    private final StringRedisTemplate redisTemplate;
-    private final ChartLastUpdatedService chartLastUpdatedService;
     private final ChartElasticsearchIndexService chartElasticsearchIndexService;
 
     @Bean
     public Job chartUpdateJob() throws Exception {
-        SimpleJobBuilder builder = new JobBuilder("chartUpdateJob", jobRepository)
-                .start(globalAvgCalculationStep());
-
-        if (chartPublishProperties.isEnabled()) {
-            builder
-                    .next(prepareCandidateVersionStep())
-                    .next(chartScoreUpdateStep())
-                    .next(elasticsearchSyncStep())
-                    .next(cacheEvictionStep());
-        } else {
-            builder
-                    .next(chartScoreUpdateStep())
-                    .next(elasticsearchSyncStep())
-                    .next(cacheEvictionStep());
-        }
-
-        return builder.build();
+        return new JobBuilder("chartUpdateJob", jobRepository)
+                .start(globalAvgCalculationStep())
+                .next(prepareCandidateVersionStep())
+                .next(chartScoreUpdateStep())
+                .next(elasticsearchSyncStep())
+                .next(cacheEvictionStep())
+                .build();
     }
 
     @Bean
@@ -114,10 +95,6 @@ public class ChartJobConfig {
     @Bean
     public Tasklet prepareCandidateVersionTasklet() {
         return (contribution, chunkContext) -> {
-            if (!chartPublishProperties.isEnabled()) {
-                return RepeatStatus.FINISHED;
-            }
-
             final var context = chartPublishOrchestratorService.generateCandidateVersion();
             final var executionContext = chunkContext.getStepContext()
                     .getStepExecution()
@@ -175,13 +152,6 @@ public class ChartJobConfig {
     @Bean
     public Tasklet elasticsearchSyncTasklet() {
         return (contribution, chunkContext) -> {
-            if (!chartPublishProperties.isEnabled()) {
-                log.info("[CHART BATCH] Step 3 started. chart_scores -> ES legacy rebuild");
-                chartElasticsearchIndexService.rebuildIndex();
-                log.info("[CHART BATCH] Step 3 completed. legacy ES rebuild complete");
-                return RepeatStatus.FINISHED;
-            }
-
             final String candidateVersion = chunkContext.getStepContext()
                     .getStepExecution()
                     .getJobExecution()
@@ -205,22 +175,6 @@ public class ChartJobConfig {
     @Bean
     public Tasklet cacheEvictionTasklet() {
         return (contribution, chunkContext) -> {
-            if (!chartPublishProperties.isEnabled()) {
-                log.info("[CHART BATCH] Step 4 started. legacy Redis/meta publish");
-
-                final Set<String> keys = redisTemplate.keys("chart:v1:*");
-                if (keys != null && !keys.isEmpty()) {
-                    redisTemplate.delete(keys);
-                    log.info("[CHART BATCH] Legacy chart cache evicted. deleted={}", keys.size());
-                } else {
-                    log.info("[CHART BATCH] No legacy chart cache keys found.");
-                }
-
-                chartLastUpdatedService.cacheLastUpdated(LocalDateTime.now());
-                log.info("[CHART BATCH] Legacy lastUpdated metadata cached");
-                return RepeatStatus.FINISHED;
-            }
-
             final String candidateVersion = chunkContext.getStepContext()
                     .getStepExecution()
                     .getJobExecution()

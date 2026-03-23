@@ -44,7 +44,6 @@ import static org.mockito.Mockito.mock;
         "spring.batch.jdbc.initialize-schema=always",
         "spring.rabbitmq.listener.simple.auto-startup=false",
         "spring.rabbitmq.listener.direct.auto-startup=false",
-        "chart.publish.enabled=true",
         "chart.publish.chart-name=weekly_chart",
         "chart.search.index-name=chart_scores_publish_it"
 })

@@ -44,7 +44,6 @@ import static org.mockito.Mockito.doNothing;
         "spring.batch.jdbc.initialize-schema=always",
         "spring.rabbitmq.listener.simple.auto-startup=false",
         "spring.rabbitmq.listener.direct.auto-startup=false",
-        "chart.publish.enabled=true",
         "chart.publish.chart-name=weekly_chart",
         "chart.search.index-name=chart_scores_publish_redis_it"
 })
@@ -136,7 +135,7 @@ class ChartPublishRedisIntegrationTest {
         final String version = "v20260314202020000";
         final LocalDateTime logicalAsOfAt = LocalDateTime.of(2026, 3, 14, 20, 20, 20);
 
-        redisTemplate.opsForValue().set("chart:v1:legacy:all:page:0", "{\"stale\":true}");
+        redisTemplate.opsForValue().set("chart:v1:v20260314191919000:all:page:0", "{\"stale\":true}");
 
         prepareCandidate(version, logicalAsOfAt, sampleScore(3003L, 4.5));
         final var validation = chartPublishOrchestratorService.validateCandidateVersion(version);
@@ -149,9 +148,9 @@ class ChartPublishRedisIntegrationTest {
                 .isEqualTo(version);
         assertThat(redisTemplate.opsForValue().get(ChartLastUpdatedService.LAST_UPDATED_KEY))
                 .isEqualTo(logicalAsOfAt.toString());
-        assertThat(redisTemplate.opsForValue().get("chart:v1:legacy:all:page:0")).isNull();
+        assertThat(redisTemplate.opsForValue().get("chart:v1:v20260314191919000:all:page:0")).isNull();
 
-        assertThat(chartPublishedVersionService.getPublishedVersionOrLegacy()).isEqualTo(version);
+        assertThat(chartPublishedVersionService.getPublishedVersion()).isEqualTo(version);
         assertThat(chartLastUpdatedService.getLastUpdated()).isEqualTo(logicalAsOfAt);
         assertThat(chartCacheKeyGenerator.generateKey((ChartFilterRequest) null, 0))
                 .isEqualTo("chart:v1:" + version + ":all:page:0");
@@ -170,7 +169,7 @@ class ChartPublishRedisIntegrationTest {
         redisTemplate.delete(ChartLastUpdatedService.LAST_UPDATED_KEY);
 
         assertThat(chartPublishStateService.requireState().getCurrentVersion()).isEqualTo(version);
-        assertThat(chartPublishedVersionService.getPublishedVersionOrLegacy()).isEqualTo(version);
+        assertThat(chartPublishedVersionService.getPublishedVersion()).isEqualTo(version);
         assertThat(chartLastUpdatedService.getLastUpdated()).isEqualTo(logicalAsOfAt);
         assertThat(redisTemplate.opsForValue().get(ChartLastUpdatedService.LAST_UPDATED_KEY))
                 .isEqualTo(logicalAsOfAt.toString());

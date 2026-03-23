@@ -72,9 +72,9 @@ public class ChartBatchBenchmarkController {
         return ResponseEntity.ok(ApiResponse.ok(chartBatchRunService.collectPrecheckSnapshot()));
     }
 
-    @PostMapping("/bootstrap-current-state")
-    public ResponseEntity<ApiResponse<ChartBatchRunService.PublishStateSnapshot>> bootstrapCurrentState() {
-        return ResponseEntity.ok(ApiResponse.ok(chartBatchRunService.bootstrapLegacyState()));
+    @PostMapping("/bootstrap-published-state")
+    public ResponseEntity<ApiResponse<ChartBatchRunService.PublishStateSnapshot>> bootstrapPublishedState() {
+        return ResponseEntity.ok(ApiResponse.ok(chartBatchRunService.bootstrapPublishedState()));
     }
 
     @PostMapping("/full-run")

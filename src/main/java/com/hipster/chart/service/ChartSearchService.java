@@ -3,11 +3,9 @@ package com.hipster.chart.service;
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
-import com.hipster.chart.config.ChartPublishProperties;
 import com.hipster.chart.domain.ChartDocument;
 import com.hipster.chart.dto.request.ChartFilterRequest;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
@@ -25,11 +23,7 @@ import java.util.stream.Collectors;
 public class ChartSearchService {
 
     private final ElasticsearchOperations elasticsearchOperations;
-    private final ChartPublishProperties chartPublishProperties;
     private final ChartElasticsearchIndexService chartElasticsearchIndexService;
-
-    @Value("${chart.search.index-name:chart_scores}")
-    private String chartSearchIndexName;
 
     public List<Long> searchReleaseIds(final ChartFilterRequest filter, final int page, final int size) {
         final BoolQuery.Builder boolQueryBuilder = new BoolQuery.Builder();
@@ -116,9 +110,6 @@ public class ChartSearchService {
     }
 
     private String resolveSearchIndexName() {
-        if (!chartPublishProperties.isEnabled()) {
-            return chartSearchIndexName;
-        }
         return chartElasticsearchIndexService.resolvePublishedIndexName();
     }
 }

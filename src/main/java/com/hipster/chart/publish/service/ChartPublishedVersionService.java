@@ -16,11 +16,7 @@ public class ChartPublishedVersionService {
     private final ChartPublishProperties chartPublishProperties;
     private final ChartPublishStateService chartPublishStateService;
 
-    public String getPublishedVersionOrLegacy() {
-        if (!chartPublishProperties.isEnabled()) {
-            return "legacy";
-        }
-
+    public String getPublishedVersion() {
         try {
             final String cached = redisTemplate.opsForValue().get(chartPublishProperties.getPublishedVersionCacheKey());
             if (StringUtils.hasText(cached)) {
@@ -35,7 +31,7 @@ public class ChartPublishedVersionService {
     }
 
     public void cachePublishedVersion(final String version) {
-        if (!chartPublishProperties.isEnabled() || !StringUtils.hasText(version)) {
+        if (!StringUtils.hasText(version)) {
             return;
         }
         try {

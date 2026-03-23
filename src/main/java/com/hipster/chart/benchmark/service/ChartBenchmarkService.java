@@ -75,7 +75,7 @@ public class ChartBenchmarkService {
         final long assembleStart = System.nanoTime();
         final TopChartResponse response = chartResponseAssembler.assemble(
                 buildChartTitle(mode, size, safeFilter),
-                chartPublishedVersionService.getPublishedVersionOrLegacy(),
+                chartPublishedVersionService.getPublishedVersion(),
                 lastUpdated,
                 chartScores
         );
@@ -230,7 +230,7 @@ public class ChartBenchmarkService {
         final long assembleStart = System.nanoTime();
         final TopChartResponse response = chartResponseAssembler.assemble(
                 buildChartTitle(mode, size, filter),
-                chartPublishedVersionService.getPublishedVersionOrLegacy(),
+                chartPublishedVersionService.getPublishedVersion(),
                 lastUpdated,
                 chartScores
         );

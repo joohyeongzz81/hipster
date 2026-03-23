@@ -84,7 +84,6 @@ public class ChartBatchRunService {
         final LocalDateTime capturedAt = LocalDateTime.now();
         return new PrecheckSnapshot(
                 capturedAt,
-                chartPublishProperties.isEnabled(),
                 "UP",
                 readRedisHealth(),
                 readElasticsearchHealth(),
@@ -95,7 +94,7 @@ public class ChartBatchRunService {
         );
     }
 
-    public PublishStateSnapshot bootstrapLegacyState() {
+    public PublishStateSnapshot bootstrapPublishedState() {
         final ChartPublishState existingState = chartPublishStateRepository.findById(chartPublishProperties.getChartName())
                 .orElse(null);
 
@@ -110,12 +109,17 @@ public class ChartBatchRunService {
             return toPublishStateSnapshot(existingState);
         }
 
-        final LocalDateTime logicalAsOfAt = resolveLegacyLogicalAsOfAt();
-        final String publishedIndexRef = chartElasticsearchIndexService.resolvePublishedIndexName();
-        chartElasticsearchIndexService.rollbackAliasToIndex(publishedIndexRef);
+        final LocalDateTime logicalAsOfAt = resolveBootstrapLogicalAsOfAt();
+        final String aliasTarget = chartElasticsearchIndexService.resolvePublishedAliasTarget();
+        final String publishedIndexRef = aliasTarget != null
+                ? aliasTarget
+                : chartElasticsearchIndexService.resolvePublishedIndexName();
+        if (aliasTarget == null) {
+            chartElasticsearchIndexService.rollbackAliasToIndex(publishedIndexRef);
+        }
 
         final ChartPublishState bootstrapped = chartPublishStateService.bootstrapPublishedState(
-                "legacy",
+                chartPublishStateService.generateNextVersion(),
                 CHART_SCORES_TABLE,
                 publishedIndexRef,
                 logicalAsOfAt,
@@ -420,7 +424,7 @@ public class ChartBatchRunService {
         );
     }
 
-    private LocalDateTime resolveLegacyLogicalAsOfAt() {
+    private LocalDateTime resolveBootstrapLogicalAsOfAt() {
         final LocalDateTime fromChartScores = jdbcTemplate.query(
                 "SELECT MAX(last_updated) FROM chart_scores",
                 rs -> rs.next() ? rs.getTimestamp(1) != null ? rs.getTimestamp(1).toLocalDateTime() : null : null
@@ -557,7 +561,6 @@ public class ChartBatchRunService {
 
     public record PrecheckSnapshot(
             LocalDateTime capturedAt,
-            boolean publishEnabled,
             String appBenchmarkHealth,
             String redisHealth,
             String elasticsearchHealth,
