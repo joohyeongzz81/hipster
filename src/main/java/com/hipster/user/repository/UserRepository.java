@@ -1,6 +1,8 @@
 package com.hipster.user.repository;
 
 import com.hipster.user.domain.User;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -20,6 +22,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmail(String email);
 
     boolean existsByUsername(String username);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select user from User user where user.id = :userId")
+    Optional<User> findByIdForUpdate(@Param("userId") Long userId);
 
     @Modifying(clearAutomatically = true)
     @Query("UPDATE User u SET u.lastActiveDate = :lastActiveDate WHERE u.id = :userId")

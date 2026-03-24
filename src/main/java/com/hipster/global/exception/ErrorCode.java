@@ -66,7 +66,13 @@ public enum ErrorCode {
     REWARD_APPROVAL_NOT_ELIGIBLE(9000, HttpStatus.BAD_REQUEST, "현재 승인 건은 적립 대상으로 처리할 수 없습니다."),
     REWARD_ACCRUAL_NOT_FOUND(9001, HttpStatus.NOT_FOUND, "해당 승인 건의 적립 기록을 찾을 수 없습니다."),
     REWARD_REVERSAL_NOT_ALLOWED(9002, HttpStatus.BAD_REQUEST, "현재 적립 기록은 취소 적립할 수 없습니다."),
-    REWARD_CAMPAIGN_NOT_FOUND(9003, HttpStatus.NOT_FOUND, "기본 적립 캠페인을 찾을 수 없습니다.");
+    REWARD_CAMPAIGN_NOT_FOUND(9003, HttpStatus.NOT_FOUND, "기본 적립 캠페인을 찾을 수 없습니다."),
+
+    // 91xx: Settlement Domain Custom Errors
+    SETTLEMENT_REQUEST_NOT_FOUND(9100, HttpStatus.NOT_FOUND, "정산 요청을 찾을 수 없습니다."),
+    SETTLEMENT_REQUEST_ALREADY_OPEN(9101, HttpStatus.CONFLICT, "이미 진행 중인 정산 요청이 있습니다."),
+    SETTLEMENT_AVAILABLE_BALANCE_TOO_LOW(9102, HttpStatus.BAD_REQUEST, "정산 가능한 금액이 최소 정산 금액보다 적습니다."),
+    SETTLEMENT_UNSUPPORTED_CURRENCY(9103, HttpStatus.BAD_REQUEST, "지원하지 않는 정산 통화입니다.");
 
     private final int code;
     private final HttpStatus status;
