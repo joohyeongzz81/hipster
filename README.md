@@ -5,12 +5,6 @@
 
 ---
 
-## Architecture
-
-> MySQL을 기준 저장소로 두고, Redis는 차트 캐시, RabbitMQ는 비동기 후속 처리, Elasticsearch는 차트 필터 탐색/조회, Spring Batch와 스케줄러는 재집계·재생성·복구 작업에 활용했습니다.
-
----
-
 ## 핵심 포인트
 
 - `Spring Data JPA + Querydsl + MySQL` 기반으로 원본 평점과 릴리즈별 요약 계층을 분리하고, `AFTER_COMMIT + RabbitMQ + Spring Batch` 전체 재집계 보정으로 평점 집계를 비동기 수렴 구조로 설계
