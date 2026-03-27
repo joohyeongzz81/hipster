@@ -1,326 +1,141 @@
-# settlement = pay and reconcile
-> reward가 `내부 적립 원장을 안전하게 확정하는 문제`였다면, settlement는 `외부 지급 경계까지 포함해 최종 상태를 맞추는 문제`다.  
-> 핵심은 자동 정산이 아니라, `정산 요청이 한 번만 잡히고`, `외부 지급 결과가 늦거나 뒤틀려도`, `결국 내부 상태와 외부 상태가 맞아지는 구조`를 만드는 것이다.
+# 적립 이후 실제 지급까지 설명 가능한 정산 흐름 만들기
+
+이전 적립 원장 작업은 승인된 기여를 안전하게 적립하는 단계까지 닫았습니다. 그런데 사용자가 적립금을 실제로 받는 순간부터는 다른 질문이 생겼습니다. 외부 지급이 타임아웃 나면 실패라고 봐도 되는지, 이미 묶어 둔 금액은 언제 다시 쓸 수 있는지, 성공 뒤 실패 알림이 늦게 오면 무엇을 기준으로 설명할지 같은 질문은 적립만으로는 답할 수 없었습니다.
+
+- **상황**: 적립까지는 설명 가능했지만, 실제 지급 단계로 넘어가면 "이 정산은 지금 어떤 상태인가"를 일관되게 설명할 기준이 없었습니다.
+- **행동**: 정산을 잔액 차감이 아니라 요청 단위로 다시 세우고, 지급 결과를 덮어쓰지 않고 기록으로 이어 붙이는 흐름으로 정산을 설계했습니다.
+- **결과**: 같은 적립금이 두 번 지급되지 않게 막으면서, 타임아웃과 늦은 실패 알림이 와도 왜 이런 상태가 됐는지 추적할 수 있게 했습니다.
 
 ---
 
-## 1. 왜 reward 다음에 settlement가 필요한가
+## 1. 문제 상황
 
-reward까지 오면 사용자는 이미 보상을 적립받는다.
+적립 원장은 "무엇이 적립됐는가"까지는 잘 설명합니다. 하지만 정산은 그다음 단계였습니다. 사용자가 정산을 요청하는 순간부터는 총 적립 잔액만으로 설명되지 않는 값과 상태가 생겼습니다.
 
-- moderation 승인
-- reward accrual
-- 사용자 적립 잔액 조회
+- 총 적립 잔액과 지금 당장 보낼 수 있는 금액은 왜 다를 수 있는가
+- 이미 다른 정산 요청이 먼저 묶어 둔 금액은 어떻게 구분하는가
+- 외부 지급 호출이 타임아웃 났을 때 실제 송금 여부는 어떻게 확인하는가
+- 성공 알림 뒤에 실패 알림이 늦게 오면 무엇을 기준으로 설명하는가
+- 지급 뒤 오차가 생기면 기존 기록을 고쳐야 하는가, 아니면 후속 기록으로 남겨야 하는가
 
-하지만 여기까지는 어디까지나 `내부 원장` 이야기다.
-
-- 이 돈이 지금 정산 가능한가
-- 이미 다른 정산 요청이 먼저 잡아간 돈은 아닌가
-- 외부 지급 호출이 timeout 났는데 실제 송금은 됐는가
-- 성공 웹훅 뒤에 실패 웹훅이 오면 어떻게 해석할 것인가
-- 내부 상태와 외부 상태가 어긋나면 무엇을 source of truth로 볼 것인가
-
-이 질문들은 reward의 연장선이지만, reward만으로는 닫히지 않는다.  
-그래서 settlement는 `reward 다음의 자연스러운 후속 서사`이되, 책임은 reward와 분리된 별도 경계로 가져가야 한다.
+핵심은 적립과 지급이 같은 문제가 아니라는 점이었습니다. 적립은 내부 기록을 지키는 문제였고, 정산은 외부 지급 결과까지 포함해 "결국 이 돈이 어떻게 됐는가"를 설명하는 문제였습니다.
 
 ---
 
-## 2. 이 주제의 메인 축은 자동 정산이 아니다
+## 2. 구조를 다시 나눈 기준
 
-`자동 정산 배치`만으로는 메인 주제가 약하다.
+### 2-1. 요청 생성 자동화보다 상태 설명이 먼저였습니다
 
-- 조건을 만족하면 배치가 요청을 만든다
-- 상태를 바꾼다
-- 재시도한다
+처음에는 일정 조건이 되면 정산 요청을 자동으로 만드는 방식이 먼저 떠올랐습니다. 하지만 요청 생성 시점을 자동화하는 것만으로는 타임아웃 뒤 실제 지급 여부, 늦게 도착한 실패 알림, 지급 뒤 정정 같은 문제를 설명할 수 없었습니다. 그래서 이번 문서의 중심은 자동화가 아니라, 정산 상태를 끝까지 설명할 수 있는 흐름을 만드는 데 두었습니다.
 
-이 정도면 “정산 시스템”이라기보다 “배치 자동화”에 가깝다.
+### 2-2. 이번 정산에서 먼저 지키기로 한 기준
 
-이 문서에서 다루는 메인 축은 아래다.
+- 정산은 잔액을 바로 깎는 동작이 아니라, 처음부터 끝까지 추적 가능한 요청 단위여야 한다.
+- 외부 지급 결과는 한 번에 깔끔하게 끝난다고 가정하지 않고, 늦거나 어긋난 신호까지 후속 기록으로 수습할 수 있어야 한다.
 
-- 사용자가 정산 요청을 만든다
-- 같은 돈이 두 번 예약되지 않는다
-- 외부 지급 호출은 한 번만 의미 있게 실행된다
-- 외부 결과가 늦거나 중복돼도 결국 최종 상태가 맞아진다
-- 입금 이후 어긋남은 수정이 아니라 adjustment로 남긴다
+### 2-3. 각 단계가 맡는 일
 
-즉 이 포트폴리오는 `자동 정산`이 아니라 `pay and reconcile`이다.
-
----
-
-## 3. 도메인 경계
-
-### reward
-
-- 승인 기반 적립 원장
-- accrual / reversal
-- 총 적립 잔액 조회
-
-reward는 `적립의 진실 공급원`까지 책임진다.  
-지급 성공 여부는 reward가 소유하지 않는다.
-
-### settlement core
-
-- available balance
-- settlement request
-- settlement allocation
-- adjustment
-
-settlement core는 `무엇을 왜 지금 지급 가능한가`를 책임진다.
-
-### payout edge
-
-- payout outbox
-- external gateway
-- webhook inbox
-- reconciliation
-
-payout edge는 `외부 지급 결과를 어떻게 관찰하고 다시 맞추는가`를 책임진다.
-
-이 구조를 한 줄로 줄이면 아래다.
-
-`reward -> settlement core -> payout edge`
+| 단계 | 맡은 일 |
+| --- | --- |
+| 적립 | 승인된 기여를 적립 기록과 잔액으로 남긴다 |
+| 정산 요청 | 지금 지급 가능한 금액을 계산하고, 이번 지급 대상 금액을 묶는다 |
+| 외부 지급 처리 | 실제 지급 시도, 결과 확인, 늦게 도착한 알림 반영을 맡는다 |
 
 ---
 
-## 4. 핵심 도메인 규칙
+## 3. 구현 과정
 
-### 4-1. 총 적립 잔액과 정산 가능 금액은 다르다
+### 3-1. 정산을 잔액 수정이 아니라 요청 단위로 세웠습니다
 
-정산 가능 금액은 아래를 뺀 결과다.
+별도 요청 없이 잔액만 직접 줄이면, "언제 누가 얼마를 정산하려 했는가", "이 지급 시도와 연결된 정산은 무엇인가", "왜 지금 추가 조정이 필요한가"를 설명하기 어렵습니다. 그래서 정산은 요청 번호, 요청 금액, 예약 금액, 지급 대상 정보, 외부 참조 번호, 상태를 함께 갖는 요청 단위로 다뤘습니다.
 
-- hold 기간 안에 있는 최근 accrual
-- 다른 정산 요청이 이미 예약한 금액
-- 아직 해소되지 않은 debit adjustment
+이렇게 바꾸고 나서야 아래 질문에 같은 기준으로 답할 수 있었습니다.
 
-즉 사용자가 reward에서 보는 총 적립 잔액이 곧바로 payout 대상 금액은 아니다.
+- 이 요청은 아직 진행 중인가
+- 이 요청은 어떤 지급 시도와 연결돼 있는가
+- 이 요청은 지급이 끝났지만 후속 조정이 필요한가
 
-### 4-2. 정산 요청은 독립 비즈니스 단위다
+### 3-2. 총 적립 잔액과 정산 가능 금액을 분리했습니다
 
-정산은 단순 차감이 아니라 `SettlementRequest`라는 단위를 가진다.
+총 적립이 1,000인데 이번에는 왜 600만 정산되는지 설명하려면, 지금 보낼 수 있는 금액을 별도로 계산해야 했습니다.
 
-- request no
-- user id
-- requested amount
-- reserved amount
-- destination snapshot
-- provider reference
-- status
+- 보류 기간 안에 있는 최근 적립은 제외
+- 다른 정산 요청이 이미 묶어 둔 금액은 제외
+- 아직 해소되지 않은 차감 조정은 제외
 
-이 요청이 있어야 외부 지급 결과, 웹훅, 대사, 조정을 한 흐름으로 묶을 수 있다.
+이 기준으로 계산하면 정산은 단순 잔액 조회가 아니라, 실제 지급 가능 금액을 다시 해석하는 단계가 됩니다. 모의 게이트웨이 환경에서는 총 적립 1,000, 활성 예약 300, 열린 차감 조정 100일 때 정산 가능 금액이 600으로 계산되는 시나리오를 확인했습니다.
 
-### 4-3. 정산 요청 생성 시 금액은 예약된다
+### 3-3. 중복은 성격별로 나눠 막았습니다
 
-정산 가능 금액을 읽고 끝나는 게 아니라, 요청 생성 시점에 `SettlementAllocation`으로 실제 reward entry를 묶어야 한다.
+정산에서 생기는 중복은 한 종류가 아니었습니다. 그래서 한 군데에서 한 번에 막기보다, 문제가 생기는 지점을 나눠서 방어했습니다.
 
-이 예약이 없으면
+- 사용자 기준으로는 동시에 열린 정산 요청이 두 개 생기지 않게 했습니다.
+- 적립 기록 기준으로는 같은 돈이 두 요청에 동시에 묶이지 않게 했습니다.
+- 지급 시도 기준으로는 같은 요청이 외부로 다시 전송되지 않게 했습니다.
 
-- 같은 사용자가 중복 요청을 보낼 수 있고
-- 같은 reward entry가 두 요청에 동시에 잡힐 수 있고
-- 배치나 다중 인스턴스 환경에서 같은 돈이 다시 선택될 수 있다
+이렇게 나누고 나니 "무엇이 중복됐는가"를 더 명확하게 설명할 수 있었고, 오류가 생겨도 원인 지점을 좁혀 볼 수 있었습니다.
 
-### 4-4. 내부 성공과 외부 성공은 다르다
+### 3-4. 지급 결과를 바로 단정하지 않고 미확정 상태를 남겼습니다
 
-`outbox dispatch 성공`은 `송금 성공`이 아니다.
+외부 지급은 항상 한 번에 끝나지 않습니다. 성공, 실패, 타임아웃, 호출 예외를 각각 다르게 다뤄야 했습니다.
 
-- timeout
-- 늦은 성공 웹훅
-- 중복 웹훅
-- 역순 웹훅
-- provider 상태 조회 결과
+| 외부 응답 | 문서 상태 | 처리 |
+| --- | --- | --- |
+| 성공 | 지급 성공 | 요청 종결 |
+| 실패 | 지급 실패 | 요청 종결, 예약 해제 |
+| 타임아웃 | 미확정 | 예약 유지, 후속 확인 대기 |
+| 호출 예외 | 예약 유지 | 전송만 다시 시도 가능 |
 
-를 거쳐서야 최종 상태가 정해진다.
+타임아웃을 곧바로 실패로 닫지 않은 이유는 단순합니다. 외부 호출이 끊긴 것과 실제 지급 실패는 같은 뜻이 아니기 때문입니다. 미확정 상태를 남겨 둬야 이후 상태 조회나 웹훅으로 올바르게 수습할 수 있습니다.
 
-그래서 settlement request 상태는 아래처럼 열린다.
+후속 알림은 아래 기준으로 반영했습니다.
 
-- `REQUESTED`
-- `RESERVED`
-- `SENT`
-- `UNKNOWN`
-- `SUCCEEDED`
-- `FAILED`
-- `NEEDS_ADJUSTMENT`
+- 미확정 뒤 성공 알림이 오면 지급 성공으로 닫습니다.
+- 전송 중이거나 미확정인 요청에 실패 알림이 오면 지급 실패로 닫습니다.
+- 이미 지급 성공으로 닫힌 요청에 늦은 실패 알림이 오면, 기존 성공을 지우지 않고 조정 필요 상태와 후속 조정 기록을 남깁니다.
 
-### 4-5. 입금 이후 오차는 adjustment로 남긴다
+### 3-5. 지급 뒤 오차는 수정이 아니라 조정 기록으로 남겼습니다
 
-reward에서는 reversal row가 자연스럽지만, settlement는 실제 지급이 한 번 외부로 나가면 이야기가 달라진다.
+한 번 지급 성공으로 닫힌 요청을 나중에 바로 실패로 되돌리면, "왜 성공이었는데 지금은 실패가 되었는가"를 설명하기 어려워집니다. 그래서 뒤늦게 드러난 차이는 기존 기록을 덮어쓰지 않고 별도 조정 기록으로 남겼습니다.
 
-- 성공 뒤 실패 웹훅
-- 외부 지급 결과 정정
-- 사후 차감 필요
+이 방식으로 바꾸면 시간이 지난 뒤에도 아래 흐름을 자연스럽게 추적할 수 있습니다.
 
-이 상황은 기존 row 수정이 아니라 `append-only adjustment`로 남겨야 한다.
+- 처음에는 성공으로 보였던 지급
+- 뒤늦게 도착한 실패 알림이나 정정 결과
+- 그 차이를 어떻게 다음 정산이나 운영 처리로 해소했는가
 
 ---
 
-## 5. 구현한 최소 흐름
+## 4. 핵심 성과
 
-현재 구현 범위는 `사용자 요청형 settlement 축소판`이다.
+설계 판단이 실제로 닫히는지는 모의 게이트웨이 환경에서 확인했습니다.
 
-1. `available balance`를 계산한다.
-2. 사용자가 정산 요청을 생성한다.
-3. 이 시점에 reward entry들이 allocation으로 예약된다.
-4. payout outbox가 생성된다.
-5. execution worker가 mock payout gateway로 지급을 시도한다.
-6. webhook inbox가 중복 웹훅을 한 번만 받아들인다.
-7. reconciliation worker가 `SENT / UNKNOWN` 요청을 다시 조회해 최종 상태를 맞춘다.
-8. 성공 뒤 실패가 오면 `NEEDS_ADJUSTMENT`와 `OPEN debit adjustment`를 남긴다.
-9. 다음 settlement request가 생성되면 열린 debit adjustment를 resolve한다.
+| 확인 항목 | 기대 동작 |
+| --- | --- |
+| 총 적립 1,000 / 활성 예약 300 / 열린 차감 조정 100 | 정산 가능 금액 600 계산 |
+| 타임아웃 응답 | 미확정으로 남기고 후속 상태 확인으로 수습 |
+| 성공 뒤 늦은 실패 알림 | 조정 필요 상태와 후속 조정 기록 생성 |
+| 열린 요청 중복 시도 | 의미 있는 충돌 응답으로 차단 |
+| 같은 적립금 중복 예약 시도 | 중복 지급으로 이어지기 전에 차단 |
 
-핵심은 `실제 은행/PG 없이도 외부 경계가 있는 것처럼 축소판을 재현`했다는 점이다.
+이번 작업에서 가장 크게 달라진 것은 속도보다 해석 방식이었습니다. 정산 요청이 한 번 열리고 나면 어떤 외부 신호가 와도, 왜 지금 이 상태인지 설명할 수 있는 흐름이 생겼습니다.
 
 ---
 
-## 6. 분산 환경을 고려한 하드닝
+## 5. 남겨둔 것
 
-이번 단계에서 가장 중요했던 것은 “서비스 코드가 조심하는 수준”을 넘는 것이다.
+이번 단계는 지급 상태를 설명하고 수습하는 흐름을 닫는 데 집중했고, 아래 범위는 의도적으로 뺐습니다.
 
-### 6-1. 열린 정산 요청 1건 제약
+- 실제 PG 연동은 포함하지 않았습니다. 검증은 모의 게이트웨이로 진행했습니다.
+- 정산 요청 자동 생성은 이번 본문에서 다루지 않았습니다. 자동화는 이 흐름 위에 얹는 다음 단계로 남겼습니다.
+- 즉시 회수 자동화는 없습니다. 열린 차감 조정은 다음 정산 요청이나 운영 처리로 해소합니다.
+- 복수 통화, 수수료, 세금, 계좌 관리는 다음 확장 범위입니다.
 
-`SettlementRequest`에는 `open_request_user_id`를 두고 unique constraint를 걸었다.
-
-- open 상태에서는 `userId`를 유지
-- finalized 되면 `null`
-
-즉 한 사용자에게 열린 settlement request가 두 건 동시에 생기면 DB가 직접 막는다.
-
-### 6-2. active allocation 중복 금지
-
-`SettlementAllocation`에는 `active_reward_ledger_entry_id`를 두고 unique constraint를 걸었다.
-
-- active reservation이면 reward entry id 유지
-- release 되면 `null`
-
-즉 같은 reward entry가 두 열린 정산 요청에 동시에 할당되면 DB가 직접 막는다.
-
-### 6-3. 제약 충돌은 500이 아니라 도메인 conflict다
-
-`SettlementRequestService`는 `DataIntegrityViolationException`을 받아
-
-- 열린 요청 충돌이면 `SETTLEMENT_REQUEST_ALREADY_OPEN`
-- 그 외 예약 충돌이면 일반 `CONFLICT`
-
-로 번역한다.
-
-즉 동시 요청 경합이 서버 오류가 아니라 비즈니스 충돌로 해석된다.
+여기서 닫은 것은 단순한 요청 생성 기능이 아니라, 적립 이후 실제 지급까지를 한 흐름으로 설명할 수 있는 정산 구조였습니다.
 
 ---
 
-## 7. 외부 지급 결과를 어떻게 맞추는가
+## 6. 관련 문서
 
-### 7-1. execution
-
-`SettlementExecutionService`는 payout outbox를 dispatch한다.
-
-- success -> `SUCCEEDED`
-- timeout -> `UNKNOWN`
-- failure -> `FAILED` + allocation release
-- gateway exception -> outbox retry
-
-### 7-2. webhook
-
-`SettlementWebhookService`는 먼저 inbox에 저장하고 dedup한다.
-
-- success webhook은 `SENT / UNKNOWN -> SUCCEEDED`
-- failure webhook은 `RESERVED / SENT / UNKNOWN -> FAILED`
-- success 이후 failure webhook은 `NEEDS_ADJUSTMENT`
-
-즉 webhook은 상태 변경 이전에 `한 번만 소비되는 외부 이벤트 경계`를 가진다.
-
-### 7-3. reconciliation
-
-`SettlementReconciliationService`는 `SENT / UNKNOWN` 요청을 다시 본다.
-
-- provider lookup success -> `SUCCEEDED`
-- provider lookup failure -> `FAILED`
-- provider lookup timeout -> 그대로 유지
-
-즉 “호출 결과를 모르는 상태”를 장기 방치하지 않고 다시 수렴시킨다.
-
----
-
-## 8. adjustment는 왜 중요한가
-
-이 포트폴리오에서 adjustment는 부가 기능이 아니라 settlement와 reward를 가르는 기준이다.
-
-reward의 질문:
-
-- 적립이 빠졌는가
-- 중복 적립됐는가
-- reversal이 필요한가
-
-settlement의 질문:
-
-- 실제 지급이 이미 나갔는데 결과 해석이 뒤집혔는가
-- 내부 상태를 고쳐야 하는가
-- 다음 정산 흐름에서 무엇을 carry-forward 해야 하는가
-
-그래서 adjustment는 `NEEDS_ADJUSTMENT` 상태와 `SettlementAdjustment` row로 따로 남긴다.
-
----
-
-## 9. 무엇을 의도적으로 버렸는가
-
-이번 포트폴리오 범위에서 일부러 넣지 않은 것들도 있다.
-
-- 실제 PG / 은행 연동
-- 자동 정산 우선 구현
-- 복수 통화
-- 수수료 / 세금
-- 관리자 대시보드
-- 계좌 관리 서브도메인
-
-이걸 다 넣으면 settlement가 강해지는 게 아니라, 경계가 흐려지고 구현만 커진다.
-
-이번 포트폴리오의 목표는 `외부 지급 경계가 들어오면 정합성 문제가 어떻게 달라지는가`를 보여주는 것이다.
-
----
-
-## 10. 코드 증거
-
-핵심 구현 파일은 아래다.
-
-- `src/main/java/com/hipster/settlement/service/SettlementAvailableBalanceService.java`
-- `src/main/java/com/hipster/settlement/service/SettlementRequestService.java`
-- `src/main/java/com/hipster/settlement/service/SettlementExecutionService.java`
-- `src/main/java/com/hipster/settlement/service/SettlementWebhookService.java`
-- `src/main/java/com/hipster/settlement/service/SettlementReconciliationService.java`
-- `src/main/java/com/hipster/settlement/service/SettlementAdjustmentService.java`
-- `src/main/java/com/hipster/settlement/domain/SettlementRequest.java`
-- `src/main/java/com/hipster/settlement/domain/SettlementAllocation.java`
-- `src/main/java/com/hipster/settlement/domain/SettlementAdjustment.java`
-- `src/main/java/com/hipster/settlement/domain/SettlementPayoutOutbox.java`
-- `src/main/java/com/hipster/settlement/domain/SettlementWebhookInbox.java`
-- `src/main/java/com/hipster/settlement/scheduler/SettlementExecutionJob.java`
-- `src/main/java/com/hipster/settlement/scheduler/SettlementReconciliationJob.java`
-
-검증은 아래 테스트로 쌓았다.
-
-- `src/test/java/com/hipster/settlement/domain/SettlementRequestStateMachineTest.java`
-- `src/test/java/com/hipster/settlement/domain/SettlementAllocationStateTest.java`
-- `src/test/java/com/hipster/settlement/domain/SettlementConstraintJpaTest.java`
-- `src/test/java/com/hipster/settlement/service/SettlementRequestServiceTest.java`
-- `src/test/java/com/hipster/settlement/service/SettlementExecutionServiceTest.java`
-- `src/test/java/com/hipster/settlement/service/SettlementWebhookServiceTest.java`
-- `src/test/java/com/hipster/settlement/service/SettlementReconciliationServiceTest.java`
-- `src/test/java/com/hipster/settlement/service/SettlementAdjustmentServiceTest.java`
-
----
-
-## 11. 면접에서 한 줄로 말하면
-
-`reward가 내부 원장 보호 문제였다면, settlement는 외부 지급 경계까지 포함해 같은 돈이 두 번 나가지 않게 예약하고, timeout·웹훅·대사를 거쳐 결국 내부 상태와 외부 지급 결과를 맞추는 문제였습니다.`
-
----
-
-## 12. 최종 정리
-
-이 settlement 포트폴리오는 `자동 정산`을 과장하지 않는다.  
-대신 아래를 분명하게 보여준다.
-
-- 총 적립금과 정산 가능 금액은 다르다
-- 정산 요청 생성 시 돈은 예약되어야 한다
-- 외부 지급 호출은 성공과 timeout을 구분해야 한다
-- 웹훅과 상태 조회를 거쳐 최종 상태가 수렴해야 한다
-- 입금 이후 어긋남은 adjustment로 남아야 한다
-
-즉 이 주제의 차별점은 `내부 정합성`이 아니라 `외부 지급까지 포함한 정합성`이다.
+- [검수된 기여만 적립으로 인정하게 만든 적립 원장](./reward-ledger.md)
+  - 정산이 입력으로 읽는 적립 기록을 어떻게 설계했는지 설명한 문서입니다.

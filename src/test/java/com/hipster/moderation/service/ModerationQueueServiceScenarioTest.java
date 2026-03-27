@@ -102,7 +102,7 @@ class ModerationQueueServiceScenarioTest {
     }
 
     @Test
-    @DisplayName("시나리오: claim 후 만료된 항목은 background recovery로 회수되고 다른 운영자가 다시 점유해 승인할 수 있다")
+    @DisplayName("시나리오: 점유 후 만료된 항목은 백그라운드 회수 뒤 다른 운영자가 다시 점유해 승인할 수 있다")
     void scenario_ExpiredClaimRecoveredThenApproved() {
         Long queueId = 100L;
         Long submitterId = 10L;
@@ -156,7 +156,7 @@ class ModerationQueueServiceScenarioTest {
     }
 
     @Test
-    @DisplayName("시나리오: 재할당된 항목은 SLA 초과 상태로 조회할 수 있고 새 담당자가 최종 반려할 수 있다")
+    @DisplayName("시나리오: 담당 전환된 항목은 SLA 초과 상태로 조회할 수 있고 새 담당자가 최종 반려할 수 있다")
     void scenario_ReassignedItemVisibleAsSlaBreachedThenRejected() {
         Long queueId = 101L;
         Long submitterId = 11L;

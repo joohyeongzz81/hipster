@@ -1,31 +1,84 @@
-# 차트 공개 일관성을 위해 publish 파이프라인 다시 세우기
+# 차트 공개 정합성을 위해 공개 파이프라인 다시 세우기
 
-> 차트 시스템에서 중요한 것은 배치가 새 결과를 계산했다는 사실 자체가 아니라, 사용자가 MySQL, Elasticsearch, Redis, 메타데이터, API 어디를 보더라도 같은 공개 버전을 보게 만드는 것입니다.  
-> 이 문서는 `generate -> validate -> publish -> serve`를 분리하고, `chart_publish_state`를 공개 기준점으로 세워 공개 버전 식별자, `logical_as_of_at`, 부분 공개 불일치 방지, 롤백 경계를 만든 과정을 정리합니다.
+> 처음에는 배치만 끝나면 새 차트가 공개된다고 생각했습니다.  
+> 그런데 조회 경로가 MySQL, Elasticsearch, Redis, 공통 메타데이터인 갱신 시각, API로 나뉘어 있다 보니, "배치 완료"와 "사용자가 같은 공개 버전을 본다"는 전혀 다른 문제였습니다. 그래서 공개 기준점과 공개 전환 경계를 다시 세우고, 직접 확인한 범위를 함께 남겼습니다.
+
+- **상황**: 차트는 MySQL, Elasticsearch, Redis, 공통 메타데이터인 갱신 시각, API로 흩어져 노출돼서, 배치 완료와 공개 완료를 같은 사건으로 볼 수 없었습니다.
+- **행동**: `chart_publish_state`를 공개 기준점으로 두고 후보 생성, 검증, 공개, 서빙 단계(`generate -> validate -> publish -> serve`)를 분리해, 후보 생성과 공개 전환을 같은 일로 다루지 않도록 구조를 다시 나눴습니다.
+- **결과**: 공개 뒤 Redis, Elasticsearch 별칭, API가 같은 공개 버전을 가리키는지 확인할 수 있게 됐고, 롤백과 Redis 키 유실 상황에서도 공개 기준점을 다시 복원할 수 있게 했습니다.
 
 ---
 
-## 1. 문제 정의
+## 1. 문제 상황
 
 차트는 한 테이블만 읽는 기능이 아니었습니다.  
-배치가 만든 결과가 MySQL 조회 테이블, Elasticsearch 인덱스, Redis 캐시, 메타데이터, API 응답으로 흩어져 노출되는 구조였기 때문에, 계산 완료와 공개 완료를 같은 사건으로 취급할 수 없었습니다.
+배치 결과는 MySQL 공개 조회 테이블, Elasticsearch 인덱스, Redis 캐시, 공통 메타데이터인 갱신 시각, API 응답으로 흩어져 노출됩니다.  
+그래서 "배치가 끝났다"와 "사용자에게 새 차트가 올바르게 공개됐다"를 같은 사건으로 취급할 수 없었습니다.
 
-실제로 위험했던 것은 배치 속도 자체보다 공개 기준의 부재였습니다.
+당시 구조는 아래 불일치를 허용하고 있었습니다.
 
-- MySQL은 새 결과를 가리키는데 Elasticsearch alias는 이전 결과를 가리킬 수 있었습니다.
+- MySQL은 새 결과를 가리키는데 Elasticsearch 별칭은 이전 결과를 가리킬 수 있었습니다.
 - Elasticsearch는 새 결과를 가리키는데 Redis 응답 캐시는 이전 버전 응답을 들고 있을 수 있었습니다.
-- 응답 캐시는 비워졌는데 `lastUpdated`만 먼저 움직이면, 사용자는 업데이트된 차트라는 메타데이터와 이전 버전 결과를 동시에 볼 수 있었습니다.
+- 응답 캐시는 비워졌는데 갱신 시각(`lastUpdated`)만 먼저 움직이면, 사용자는 "업데이트된 차트"라는 공통 메타데이터인 갱신 시각과 이전 버전 결과를 동시에 볼 수 있었습니다.
 - 배치가 중간에 실패하면 어떤 저장소는 새 결과를, 어떤 저장소는 이전 결과를 보여주는 부분 공개 불일치가 생길 수 있었습니다.
 
-여기서 질문을 다시 잡았습니다.  
-차트 시스템의 핵심은 "배치를 얼마나 빨리 돌렸는가"가 아니라, **지금 공개된 차트를 어디에서 정의하고 어떻게 끝까지 같은 버전으로 보장할 것인가**였습니다.
+처음에는 이걸 배치 속도 문제의 연장선으로 봤습니다.  
+배치를 더 빨리 돌리고 캐시만 잘 비우면 끝날 거라고 생각했습니다.
+
+그런데 조회 경로를 뜯어 볼수록 오히려 더 거슬렸던 건 "새 결과를 만들었다"는 사실보다 "지금부터 무엇을 공개된 기준으로 볼 것인가"였습니다.  
+배치 완료 로그는 하나인데, 사용자는 여러 저장소를 거친 응답을 보게 되니 그 로그만으로는 공개를 설명할 수 없었습니다.
+
+중요한 이유는 아래와 같았습니다.
+
+- 차트는 사용자에게 노출되는 공개 지표라서, 저장소마다 다른 결과를 보이면 신뢰도가 바로 흔들립니다.
+- 운영자 입장에서도 "지금 공개된 기준"이 없으면 장애 시 롤백 목표를 설명하기 어렵습니다.
+- 공통 메타데이터인 갱신 시각(`lastUpdated`)까지 공개 계약에 포함되지 않으면, 사용자에게는 "갱신됐다"는 안내와 실제 결과가 충돌하는 잘못된 공개가 됩니다.
+
+생각이 바뀐 지점도 여기였습니다.  
+차트에서 위험한 것은 배치가 몇 분 더 걸리는 일보다, 공개 기준이 애매해서 저장소마다 다른 상태를 보여주는 일이었습니다.
+
+질문은 이렇게 바뀌었습니다.
+
+> 차트 시스템의 핵심은 "배치를 얼마나 빨리 돌렸는가"가 아니라, **지금 공개된 차트를 어디에서 정의하고 어떻게 끝까지 같은 공개 버전으로 보장할 것인가**였습니다.
 
 ---
 
-## 2. 공개 기준: `version`과 `chart_publish_state`
+## 2. 판단 기준
 
-이 문서에서 `version`은 도메인 원본 데이터의 필드가 아닙니다.  
-차트 API 응답 상단에서 현재 공개된 스냅샷을 식별하는 **공개 버전 식별자**입니다.
+### 2-1. 끝까지 가져가지 않은 선택지
+
+처음 떠올린 방법은 지금보다 훨씬 단순했습니다.
+
+- Elasticsearch 별칭만 바꾸고 Redis 캐시만 비우면 공개가 끝난다고 보는 방법
+- Redis에 저장한 공개 버전 하나를 기준으로 삼고 다른 저장소는 느슨하게 따라오게 두는 방법
+- `publishedAt`을 곧바로 사용자 가시 시점으로 간주하고 `lastUpdated`도 그 시계 시간에 맞추는 방법
+
+처음엔 이런 방식이 더 실용적으로 보였습니다. 구현도 단순했고, 겉으로 보기엔 "새 버전 공개"라는 말도 충분히 할 수 있어 보였기 때문입니다.
+
+하지만 조금만 따져 보니 이 방법들은 공개 기준점을 어디에 둘 것인지 설명하지 못했습니다.
+
+- Elasticsearch 별칭은 바뀌었는데 응답 캐시가 남아 있으면, 사용자는 이전 결과를 계속 볼 수 있습니다.
+- Redis를 기준점으로 삼으면 Redis 키가 비었을 때 무엇이 공개 기준점인지 다시 설명해야 합니다.
+- `publishedAt`을 바로 갱신 시각(`lastUpdated`)으로 쓰면, 실제 차트 결과보다 공통 메타데이터인 갱신 시각이 먼저 움직일 수 있습니다.
+- 무엇보다 공개 실패나 롤백이 생겼을 때 "정확히 어디까지를 되돌려야 하는가"가 모호했습니다.
+
+결국 먼저 바꾼 건 배치 코드보다 공개를 설명하는 기준이었습니다.  
+이 차트는 실시간 주문/결제처럼 모든 쓰기가 즉시 외부에 반영돼야 하는 서비스가 아니라, 배치로 공개 버전을 만들고 공개하는 서비스였기 때문에 이번 작업에서는 `즉시성`보다 `공개 정합성`을 우선했습니다.
+
+대신 아래 복잡성은 받아들이기로 했습니다.
+
+- 후보 테이블 `chart_scores_stage`, 이전 공개 테이블, 후보 인덱스, 공개 상태 같은 추가 상태 관리
+- 공개 처리와 API 노출 시점 사이의 짧은 지연
+- 정리 정책, 롤백, 마이그레이션 문서화가 필요한 운영 복잡성
+
+이 선택이 예쁘거나 단순해서가 아니라, 차트처럼 공개 지표를 다루는 기능에서는 그 편이 더 덜 위험하다고 판단했습니다.
+
+---
+
+### 2-2. 공개 기준점: `version`과 `chart_publish_state`
+
+여기서 `version`은 도메인 원본 데이터의 필드가 아닙니다.  
+차트 API 응답에서 현재 공개된 차트를 식별하는 **공개 버전 식별자**입니다.
 
 예를 들면 API는 아래처럼 현재 공개 버전을 함께 반환합니다.
 
@@ -37,21 +90,19 @@
 }
 ```
 
-즉, `version`은 `ratings`나 `release_rating_summary` 안의 원본 값이 아니라, 사용자가 지금 보고 있는 차트가 어느 공개 스냅샷인지 설명하는 값입니다.
+즉, `version`은 `ratings`나 `release_rating_summary` 안의 원본 값이 아니라, 사용자가 지금 보고 있는 차트가 어느 공개 버전인지 설명하는 값입니다.
 
 이 기준점을 코드에서 맡는 테이블이 `chart_publish_state`입니다.  
-`chart_publish_state`는 아래 상태를 함께 관리합니다.
+처음엔 Redis 공개 버전을 기준으로 삼을까도 생각했지만, Redis는 보조 저장소이지 공개 상태를 최종 설명하는 원본으로 두기엔 불안했습니다.  
+Elasticsearch 별칭도 마찬가지였습니다. 별칭은 검색 계층 상태는 보여 줘도 MySQL 공개 조회 테이블, 공통 메타데이터인 갱신 시각, 롤백 기준까지 설명하지는 못했습니다.
 
-- `current_version`, `previous_version`, `candidate_version`
-- `status`
-- `mysql_projection_ref`, `previous_mysql_projection_ref`, `candidate_mysql_projection_ref`
-- `es_index_ref`, `previous_es_index_ref`, `candidate_es_index_ref`
-- `logical_as_of_at`, `previous_logical_as_of_at`, `candidate_logical_as_of_at`
-- `published_at`
-- `last_validation_status`
-- `last_error_code`, `last_error_message`
+`chart_publish_state`는 크게 세 묶음의 정보를 관리합니다.
 
-추가로 `chart_publish_history`를 두어 아래 이력을 남깁니다.
+- 버전 흐름: `current_version`, `previous_version`, `candidate_version`
+- 저장소 참조: `mysql_projection_ref`, `es_index_ref`와 그 previous/candidate 쌍
+- 공개 상태 메타데이터: `logical_as_of_at`, `published_at`, `status`, `last_validation_status`, `last_error_code`, `last_error_message`
+
+추가로 `chart_publish_history`에 아래 상태 이력을 남깁니다.
 
 - `GENERATING`
 - `VALIDATING`
@@ -59,204 +110,158 @@
 - `FAILED`
 - `ROLLED_BACK`
 
-핵심은 Redis 키나 Elasticsearch alias 자체가 공개 기준점이 아니라는 점입니다.  
-실제로 "지금 공개된 차트"를 결정하는 값은 `chart_publish_state.current_version`이고, 다른 저장소들은 그 기준을 따라가야 합니다.
+그래서 "지금 공개된 차트"를 결정하는 공개 기준점을 `chart_publish_state.current_version`으로 명시했습니다.  
+다른 저장소는 이 기준을 따라가고, Redis 키가 일시적으로 비어도 다시 이 상태로 돌아올 수 있어야 했습니다.
 
 ---
 
-## 3. `generate -> validate -> publish -> serve`
+## 3. 구현 과정
 
-공개 흐름은 아래처럼 분리했습니다.
+### 3-1. 후보 생성 -> 검증 -> 공개 -> 서빙
+
+차트 계층은 평점 요약 계층 `release_rating_summary`를 읽어 후보 `chart_scores`를 만들고, 그 뒤 공개 전환을 거칩니다. 코드 단계 이름으로는 `generate -> validate -> publish -> serve`입니다.
 
 ```text
 release_rating_summary
-  -> generate candidate version
-  -> chart_scores_stage
-  -> candidate Elasticsearch index
-  -> validate
-  -> publish
-  -> Redis published version / lastUpdated / response cache
-  -> serve only current published version
+  -> 후보 버전 생성
+  -> chart_scores_stage 적재
+  -> 후보 Elasticsearch 인덱스 생성
+  -> 검증
+  -> 공개
+  -> Redis 공개 버전 / 갱신 시각 / 응답 캐시 반영
+  -> 현재 공개 버전만 서빙
 ```
 
-### 3-1. generate
+#### 후보 생성(`generate`)
 
-generate 단계에서는 아직 공개 상태를 건드리지 않습니다.
+후보 생성 단계에서는 아직 공개 상태를 건드리지 않습니다.
 
 - 후보 버전을 만듭니다.
-- `chart_scores_stage`를 준비합니다.
+- 후보 테이블 `chart_scores_stage`를 준비합니다.
 - 후보 Elasticsearch 인덱스 이름을 확정합니다.
 - `chart_publish_state`에 `candidate_version`과 후보 참조를 기록합니다.
 
-중요한 점은 이 단계가 "새 차트를 만들기 시작했다"는 뜻이지, "새 차트를 공개했다"는 뜻은 아니라는 점입니다.
+이 단계의 의미는 "새 차트를 만들기 시작했다"이지, "새 차트를 공개했다"가 아닙니다.
 
-### 3-2. validate
+#### 검증(`validate`)
 
-validate 단계에서는 후보 스냅샷이 공개 가능한 상태인지 확인합니다.
+검증 단계에서는 후보 공개 버전이 공개 가능한 최소 차단 조건을 만족하는지 확인합니다.
 
 - MySQL 후보 행 수가 0보다 커야 합니다.
 - MySQL 후보 행 수와 Elasticsearch 후보 문서 수가 맞아야 합니다.
 - 후보 Elasticsearch 인덱스가 실제 검색 가능한 상태여야 합니다.
 
 이 단계가 실패하면 `current_version`은 바뀌지 않습니다.  
-즉, 검증 실패는 공개 실패일 뿐이고, 기존 공개 버전은 그대로 유지됩니다.
+즉, 검증 실패는 "새 후보를 버린다"가 아니라 "기존 공개 버전을 유지한다"는 뜻입니다.
 
-### 3-3. publish
+#### 공개(`publish`)
 
-publish 단계에서만 실제 공개 상태를 전환합니다.
+공개 단계에서만 실제 공개 상태를 전환합니다.
 
-- MySQL 공개 테이블을 교체합니다.
-- Elasticsearch alias를 후보 인덱스로 전환합니다.
-- `chart_publish_state.markPublished(version)`를 호출합니다.
+- MySQL 공개 조회 테이블을 교체합니다.
+- Elasticsearch 별칭을 후보 인덱스로 전환합니다.
+- `chart_publish_state`를 `PUBLISHED`로 갱신합니다.
 - Redis에 공개 버전을 반영합니다.
 - 차트 응답 캐시를 비웁니다.
-- `lastUpdated`를 `logical_as_of_at` 기준으로 맞춥니다.
+- 갱신 시각(`lastUpdated`)을 `logical_as_of_at` 기준으로 반영합니다.
 
-즉, publish는 단순 저장이 아니라, 여러 저장소의 공개 상태를 한 계약으로 전환하는 단계입니다.
+중요한 점은 이 공개 단계가 **분산 원자성을 제공하는 단일 트랜잭션 그 자체**는 아니라는 점입니다.  
+공개 메서드가 끝나는 순간 곧바로 새 차트가 보일 것처럼 생각하기 쉽지만, 이 가정을 두면 API 노출이 조금만 늦어도 설명이 꼬입니다. 그래서 여기서는 공개를 여러 저장소의 공개 전환을 하나의 절차와 롤백 경계로 묶는 단계로 보고, `publishedAt`과 `apiVisibleAt`도 따로 측정했습니다.
 
-### 3-4. serve
+#### 서빙(`serve`)
 
-serve 단계에서는 후보가 아니라 **현재 공개 버전만** 읽습니다.
+서빙 단계에서는 공개 버전을 기준으로 응답합니다.
 
 - 응답 캐시 키는 `chart:v1:{publishedVersion}:...` 형태의 버전별 이름공간을 사용합니다.
-- `ChartPublishedVersionService`는 Redis에 저장된 공개 버전을 우선 읽고, 실패하면 `chart_publish_state.current_version`으로 되돌아갑니다.
-- `ChartLastUpdatedService`는 공개 모드에서 `chart_publish_state.logical_as_of_at`를 기준으로 `lastUpdated`를 노출합니다.
+- `ChartPublishedVersionService`는 Redis의 공개 버전을 우선 읽고, 키가 비거나 읽기에 실패하면 `chart_publish_state.current_version`으로 되돌아갑니다.
+- `ChartLastUpdatedService`는 공개 모드에서 `chart_publish_state.logical_as_of_at`를 기준으로 갱신 시각(`lastUpdated`)을 만듭니다.
 
-이 구조에서는 새 후보 데이터를 먼저 만들어도, publish 전까지는 API가 그 결과를 보여주지 않습니다.
+이 구조의 목표는 후보 데이터를 먼저 만들어도, 공개 전환이 끝나기 전까지는 사용자가 **후보가 아니라 공개 기준점 기준 응답**을 보게 만드는 것입니다.
 
 ---
 
-## 4. 부분 공개 불일치 방지
+### 3-2. 저장소별 공개 경계
 
-### 4-1. MySQL은 후보와 공개를 분리했습니다
+#### MySQL: 후보와 공개를 분리했습니다
 
-MySQL에서 계산 중 결과와 공개 중 결과를 섞지 않기 위해 `chart_scores_stage`와 공개 테이블을 분리했습니다.
+MySQL에서는 계산 중 결과와 공개 중 결과를 섞지 않기 위해 후보 테이블 `chart_scores_stage`와 공개 조회 테이블을 분리했습니다.
 
 1. `chart_scores_stage`에 후보 결과를 적재합니다.
-2. 검증이 끝난 뒤에만 `RENAME TABLE`로 공개 테이블을 교체합니다.
+2. 검증이 끝난 뒤에만 `RENAME TABLE`로 공개 조회 테이블을 교체합니다.
 3. 이전 공개 테이블은 `chart_scores_prev`로 보관합니다.
 
-실제 공개의 중심 동작은 `ChartScoreQueryRepository.publishStageTable()`의 아래 절차입니다.
+즉, "배치가 후보를 만들고 있다"는 사실과 "사용자가 보는 공개 조회 테이블이 바뀐다"는 사건을 분리했습니다.
 
-- `DROP TABLE IF EXISTS chart_scores_prev`
-- `RENAME TABLE chart_scores TO chart_scores_prev, chart_scores_stage TO chart_scores`
-- 새 `chart_scores_stage`를 다시 생성
-
-즉, 배치가 후보를 만들고 있다는 사실과 MySQL에서 공개 테이블이 바뀌는 시점은 분리됩니다.
-
-### 4-2. Elasticsearch도 후보 인덱스와 공개 alias를 분리했습니다
+#### Elasticsearch: 후보 인덱스와 공개 별칭을 분리했습니다
 
 Elasticsearch도 같은 기준 아래로 옮겼습니다.
 
 - 후보 인덱스 이름은 `chart.search.index-name + "_" + normalize(version)` 규칙으로 생성합니다.
-- 배치는 공개 인덱스가 아니라 후보 인덱스를 다시 만듭니다.
-- 검증이 끝나기 전까지 공개 alias는 그대로 둡니다.
-- publish 시점에만 alias를 후보 인덱스로 전환합니다.
+- 배치는 공개 별칭이 아니라 후보 인덱스를 다시 만듭니다.
+- 검증이 끝나기 전까지 공개 별칭은 그대로 둡니다.
+- 공개 시점에만 별칭을 후보 인덱스로 전환합니다.
 
-이 덕분에 검색 계층에서도 계산 중인 인덱스와 현재 공개 인덱스를 분리할 수 있게 됐습니다.
+즉, 검색 계층에서도 "계산 중인 인덱스"와 "현재 공개 인덱스"를 분리했습니다.
 
-### 4-3. Redis와 메타데이터도 공개 버전 기준으로 다시 정의했습니다
+#### Redis와 공통 메타데이터인 갱신 시각도 공개 버전 기준으로 다시 정의했습니다
 
 공개 불일치는 저장소 데이터만의 문제가 아니었습니다.  
-Redis 캐시와 메타데이터가 먼저 움직여도 사용자 입장에서는 잘못된 공개입니다.
+Redis 캐시와 공통 메타데이터인 갱신 시각이 먼저 움직여도 사용자 입장에서는 잘못된 공개입니다.
 
 그래서 공개 모드에서는 의미를 아래처럼 다시 정의했습니다.
 
 - 응답 캐시는 공개 버전별 이름공간으로 분리합니다.
-- Redis가 일시적으로 비어도 `chart_publish_state.current_version`으로 되돌아갈 수 있게 했습니다.
-- `lastUpdated`는 단순 시계 시간이 아니라, 현재 공개된 스냅샷의 논리 시점인 `logical_as_of_at`를 의미하게 했습니다.
+- Redis 키가 유실되거나 읽기에 실패해도 `chart_publish_state.current_version`으로 되돌아갈 수 있게 했습니다.
+- 갱신 시각(`lastUpdated`)은 단순 시계 시간이 아니라, 현재 공개 버전의 논리 시점인 `logical_as_of_at`를 의미하게 했습니다.
 
-즉, `lastUpdated`는 "배치가 언제 끝났는가"가 아니라, "지금 공개된 차트가 어느 시점의 데이터를 반영하는가"를 설명하는 값입니다.
-
----
-
-## 5. 검증 실패와 롤백
-
-이 파이프라인에서 중요한 규칙은 하나입니다.  
-**검증이 끝나기 전에는 `current_version`이 절대 바뀌지 않는다**는 점입니다.
-
-실제 구현에서도 검증이 실패하면 아래 전환은 일어나지 않습니다.
-
-- MySQL 공개 테이블 교체
-- Elasticsearch alias 전환
-- Redis 공개 버전 갱신
-- `lastUpdated` 갱신
-
-롤백도 alias만 되돌리는 수준이 아닙니다.  
-`previous_version`을 기준으로 아래 상태를 함께 복구합니다.
-
-- MySQL 공개 테이블
-- Elasticsearch alias
-- `chart_publish_state`
-- Redis 공개 버전
-- 차트 응답 캐시
-- `lastUpdated`
-
-즉, 롤백의 목적은 실패한 후보를 지우는 것이 아니라, 사용자가 다시 **하나의 이전 공개 버전**을 보게 만드는 것입니다.
+즉, 갱신 시각(`lastUpdated`)은 "배치가 언제 끝났는가"가 아니라, "지금 공개된 차트가 어느 시점의 데이터를 반영하는가"를 설명하는 값입니다.
 
 ---
 
-## 6. 결과
+## 4. 직접 확인한 것
 
-이 문서에서 남겨야 할 수치는 공개 일관성 주장에 직접 연결되는 값만 남겼습니다.
+종단 간 공개 검증으로 먼저 확인한 항목은 세 가지였습니다. 공개 단계가 끝난 시각과 API 노출 시각이 같은지, 공개가 끝난 뒤 Redis, Elasticsearch 별칭, API가 같은 공개 버전을 가리키는지, 롤백이나 Redis 키 유실 상황에서도 공개 기준점이 살아남는지였습니다.
 
-| 항목 | 측정값 | 의미 |
-| --- | --- | --- |
-| 공개 후 반영 지연 | **296.03ms** | `publishedAt` 이후 API가 새 공개 버전을 반환하기까지의 지연입니다. |
-| 공개 일관성 검증 | **DB state / Redis / ES alias / API 동일 version** | 여러 저장소가 실제로 같은 공개 버전을 가리키는지 확인한 결과입니다. |
-| 메타데이터 기준 | **`lastUpdated = logical_as_of_at`** | 시계 시간이 아니라 공개 스냅샷의 논리 시점을 보여주게 했습니다. |
+직접 확인한 결과는 아래와 같습니다.
 
-이 수치가 의미하는 바는 세 가지입니다.
+- 공개 단계가 끝났다고 해서 API가 같은 순간에 새 버전을 내보내는 건 아니었습니다. `publishedAt`과 `apiVisibleAt` 사이에는 `296.03ms`가 있었습니다.
+- 공개가 안정화된 뒤에는 Redis 공개 버전, Redis 갱신 시각(`lastUpdated`), Elasticsearch 별칭, API 응답이 모두 같은 공개 버전을 가리켰습니다.
+- 롤백과 Redis 키 유실 상황에서도 공개 버전과 갱신 시각(`lastUpdated`)을 다시 복원할 수 있었습니다.
 
-- publish 시점과 API 가시 시점은 분리해서 봐야 합니다.
-- 공개 성공은 배치 완료가 아니라, 여러 저장소가 같은 공개 버전을 가리키는 상태를 뜻합니다.
-- `lastUpdated`도 공개 계약의 일부로 다뤄야 합니다.
+다만 한 검증 실행에서는 새 버전의 `logical_as_of_at`가 이전 공개 버전보다 60초 이른 값으로 공개되기도 했습니다. 공개 정합성을 확인했다고 해서 최신성까지 함께 해결된 것은 아니었습니다. 이 한계는 다음 절에 남깁니다.
 
 ---
 
-## 7. 아직 남은 일
+## 5. 남겨둔 것
 
-- 검증은 아직 최소 차단 조건 수준입니다.
-- 운영 절차 문서와 자동 간단 검증까지 완성한 것은 아닙니다.
-- 실서비스 마이그레이션이었다면 기존 공개 경로에서 새 publish 경로로 옮길 때 cache namespace, metadata semantics, rollback 절차를 운영 전환 관점에서 더 검토해야 합니다.
+아직 닫지 못한 부분은 아래와 같습니다.
 
-이번 단계의 목표는 완성형 플랫폼이 아니었습니다.  
-여러 저장소에 걸친 차트 공개를 부분 공개 불일치 없이 통제할 수 있는 최소 공개 아키텍처를 코드로 닫는 것이 목표였습니다.
+- 검증(`validate`)은 아직 최소 차단 조건입니다. 행 수, 문서 수, 검색 가능성을 맞췄다고 해서 순위의 비즈니스 정합성까지 모두 증명한 것은 아닙니다.
+- 이번 공개 정합성 수치는 로컬 합성 데이터 벤치마크 환경에서 나온 값입니다. 실제 트래픽, 다중 노드 캐시, 실제 장애 주입까지 대변하지는 않습니다.
+- 한 검증 실행에서는 새 버전의 `logical_as_of_at`가 이전 공개 버전보다 60초 이른 값으로 공개되기도 했습니다. 공개 정합성과 최신성은 분리해서 봐야 합니다.
+- 운영 절차 문서와 자동 간단 검증, 정리 정책, 마이그레이션 점검표까지 완성한 것은 아닙니다.
 
----
+이번 문서에서 직접 확인한 범위는 `chart_publish_state`를 공개 기준점으로 세우고, 후보 생성, 검증, 공개, 서빙 단계(`generate -> validate -> publish -> serve`)를 분리했을 때 공개 기준점과 롤백, 폴백이 어떻게 동작하는가입니다.
 
-## 8. 관련 코드
+아직 검증하지 못한 범위도 분명합니다.
 
-아래 코드는 이 공개 파이프라인을 실제로 구현한 핵심 파일들입니다.
-
-- `src/main/java/com/hipster/chart/publish/domain/ChartPublishState.java`
-- `src/main/java/com/hipster/chart/publish/domain/ChartPublishHistory.java`
-- `src/main/java/com/hipster/chart/publish/service/ChartPublishStateService.java`
-- `src/main/java/com/hipster/chart/publish/service/ChartPublishOrchestratorService.java`
-- `src/main/java/com/hipster/chart/config/ChartPublishProperties.java`
-- `src/main/java/com/hipster/batch/chart/config/ChartJobConfig.java`
-- `src/main/java/com/hipster/batch/chart/repository/ChartScoreQueryRepository.java`
-- `src/main/java/com/hipster/chart/service/ChartElasticsearchIndexService.java`
-- `src/main/java/com/hipster/chart/service/ChartLastUpdatedService.java`
-- `src/main/java/com/hipster/chart/publish/service/ChartPublishedVersionService.java`
-- `src/test/java/com/hipster/chart/publish/service/ChartPublishJobIntegrationTest.java`
-- `src/test/java/com/hipster/chart/publish/service/ChartPublishEndToEndIntegrationTest.java`
-- `src/test/java/com/hipster/chart/publish/service/ChartPublishAliasRollbackIntegrationTest.java`
-- `src/test/java/com/hipster/chart/publish/service/ChartPublishFailurePathIntegrationTest.java`
-- `src/test/java/com/hipster/chart/publish/service/ChartPublishRedisIntegrationTest.java`
+- 모든 요청이 공개 순간에도 끊김 없이 항상 같은 공개 버전만 본다고까지는 말할 수 없습니다.
+- 새 버전이 항상 이전 버전보다 더 최신 데이터를 뜻한다고도 아직 말할 수 없습니다.
+- 운영 절차까지 완전히 닫았다고 하기도 어렵습니다.
 
 ---
 
-## 9. 관련 문서
+## 6. 관련 문서
 
-아래 문서는 이 공개 파이프라인과 맞닿은 관련 문서입니다.
+관련 흐름은 아래 문서에서 이어집니다.
 
 - [chart-pipeline 읽기 전 개념 먼저 잡기](../docs/chart/study_pack/chart_pipeline_primer.md)
-- [평점 조회와 차트 배치가 함께 쓰는 공통 집계 계층 만들기](./rating-aggregation.md)
-- [차트 API 읽기 경로를 캐시·검색·fallback·메타데이터로 분리해 응답 병목 줄이기](./chart-serving.md)
+- [평점 조회와 차트 배치가 함께 쓰는 평점 요약 계층 만들기](./rating-aggregation.md)
+- [차트 API 조회 경로를 캐시·검색·폴백·메타데이터로 분리해 응답 병목 줄이기](./chart-serving.md)
+- [차트 배치 성능을 정량 검증하며 writer 병목과 쓰기 전략을 다시 고르기](./chart-batch-performance.md)
 
 ---
 
-## 10. 한 줄 요약
+## 7. 한 줄 요약
 
-`chart_publish_state`를 공개 기준점으로 세우고 `generate -> validate -> publish -> serve`를 분리해, MySQL 조회 테이블, Elasticsearch, Redis, 메타데이터, API가 모두 같은 공개 버전을 보도록 차트 publish 파이프라인을 다시 설계했습니다.
+`chart_publish_state`를 공개 기준점으로 세우고 후보 생성, 검증, 공개, 서빙 단계(`generate -> validate -> publish -> serve`)를 분리해, MySQL, Elasticsearch, Redis, 공통 메타데이터인 갱신 시각, API가 같은 공개 버전을 따라가도록 차트 공개 파이프라인을 다시 설계했고, 종단 간 공개 검증과 통합 테스트 기준에서 그 공개 기준점과 롤백, 폴백 범위를 확인했습니다.

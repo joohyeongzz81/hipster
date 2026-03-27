@@ -176,7 +176,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("만료된 claim 은 다른 모더레이터가 다시 점유할 수 있다")
+    @DisplayName("만료된 점유는 다른 모더레이터가 다시 점유할 수 있다")
     void claimQueueItem_ExpiredClaim_ReassignsModerator() {
         Long queueId = 3L;
         Long submitterId = 12L;
@@ -224,7 +224,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("claim 이 만료되면 기존 모더레이터는 승인할 수 없다")
+    @DisplayName("점유가 만료되면 기존 모더레이터는 승인할 수 없다")
     void approve_ExpiredClaim_ThrowsNotClaimed() {
         Long queueId = 4L;
         Long submitterId = 13L;
@@ -281,7 +281,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("현재 점유자는 다른 모더레이터에게 재할당할 수 있다")
+    @DisplayName("현재 점유자는 다른 운영자에게 담당 전환할 수 있다")
     void reassignQueueItem_Owner_Success() {
         Long queueId = 9L;
         Long submitterId = 22L;
@@ -317,7 +317,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("관리자는 다른 운영자가 점유한 항목도 재할당할 수 있다")
+    @DisplayName("관리자는 다른 운영자가 점유한 항목도 담당 전환할 수 있다")
     void reassignQueueItem_Admin_Success() {
         Long queueId = 10L;
         Long submitterId = 23L;
@@ -347,7 +347,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("점유하지 않은 모더레이터는 다른 사람의 항목을 재할당할 수 없다")
+    @DisplayName("점유하지 않은 모더레이터는 다른 사람의 항목을 담당 전환할 수 없다")
     void reassignQueueItem_NotOwnerModerator_ThrowsForbidden() {
         Long queueId = 11L;
         Long submitterId = 24L;
@@ -369,7 +369,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("재할당 대상은 모더레이터 또는 관리자여야 한다")
+    @DisplayName("담당 전환 대상은 모더레이터 또는 관리자여야 한다")
     void reassignQueueItem_TargetWithoutModerationRole_ThrowsBadRequest() {
         Long queueId = 12L;
         Long submitterId = 25L;
@@ -393,7 +393,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("현재 담당자와 동일한 사용자에게는 재할당할 수 없다")
+    @DisplayName("현재 담당자와 동일한 사용자에게는 담당 전환할 수 없다")
     void reassignQueueItem_SameTarget_ThrowsBadRequest() {
         Long queueId = 13L;
         Long submitterId = 26L;
@@ -413,7 +413,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("만료된 항목은 재할당 전에 만료 보정이 적용된 뒤 거절된다")
+    @DisplayName("만료된 항목은 담당 전환 전에 만료 보정이 적용된 뒤 거절된다")
     void reassignQueueItem_ExpiredClaim_ThrowsBadRequest() {
         Long queueId = 14L;
         Long submitterId = 27L;
@@ -442,7 +442,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("대기열 조회는 전역 만료 claim 정리를 수행하지 않는다")
+    @DisplayName("대기열 조회는 전역 만료 점유 정리를 수행하지 않는다")
     void getModerationQueue_DoesNotReleaseExpiredClaimsBeforeListing() {
         Long submitterId = 15L;
         ModerationQueue pendingItem = queueItem(EntityType.RELEASE, 105L, submitterId, "Old pending");
@@ -476,7 +476,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("만료 claim 회수 작업은 요청 유입 없이 만료된 점유를 정리한다")
+    @DisplayName("만료 점유 회수 작업은 요청 유입 없이 만료된 점유를 정리한다")
     void releaseExpiredClaims_ReleasesExpiredItems() {
         Long submitterId = 20L;
         Long moderatorId = 38L;
@@ -505,7 +505,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("만료 claim 회수 중 동시성 충돌이 나면 해당 항목은 건너뛴다")
+    @DisplayName("만료 점유 회수 중 동시성 충돌이 나면 해당 항목은 건너뛴다")
     void releaseExpiredClaims_SkipsOptimisticLockConflict() {
         Long submitterId = 21L;
         Long moderatorId = 39L;
@@ -527,7 +527,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("리뷰 승인 시 실제 리뷰 공개 상태와 moderation 상태를 함께 반영한다")
+    @DisplayName("리뷰 승인 시 실제 리뷰 공개 상태와 검수 상태를 함께 반영한다")
     void approve_Review_PublishesReviewAndMarksApproved() {
         Long queueId = 6L;
         Long submitterId = 16L;
@@ -563,7 +563,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("릴리즈 반려 시 실제 릴리즈 상태와 moderation 상태를 함께 반영한다")
+    @DisplayName("릴리즈 반려 시 실제 릴리즈 상태와 검수 상태를 함께 반영한다")
     void reject_Release_DeletesReleaseAndMarksRejected() {
         Long queueId = 7L;
         Long submitterId = 17L;
@@ -598,7 +598,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("승인 대상 엔티티가 없으면 moderation 상태를 완료로 바꾸지 않는다")
+    @DisplayName("승인 대상 엔티티가 없으면 검수 상태를 완료로 바꾸지 않는다")
     void approve_MissingRelease_ThrowsNotFound() {
         Long queueId = 8L;
         Long submitterId = 18L;
@@ -619,7 +619,7 @@ class ModerationQueueServiceTest {
     }
 
     @Test
-    @DisplayName("제출 스냅샷은 moderation queue 에 직렬화되어 저장된다")
+    @DisplayName("제출 스냅샷은 검수 대기열에 직렬화되어 저장된다")
     void submit_SerializesSnapshotAndSavesQueueItem() throws Exception {
         Long submitterId = 19L;
         User user = User.builder()
