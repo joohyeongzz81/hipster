@@ -36,3 +36,4 @@
 - [차트 API 읽기 경로를 캐시·검색·fallback·메타데이터로 분리해 응답 병목 줄이기](portfolio/chart-serving.md)
 - [검수 적체와 SLA를 다루는 운영형 moderation queue 만들기](portfolio/moderation-queue.md)
 - [승인과 적립 기록의 경계를 분리하고 Reward Ledger를 유실·중복 없이 관리하기](portfolio/reward-ledger.md)
+- [적립 이후 실제 지급까지 설명 가능한 정산 흐름 만들기](portfolio/settlement-pay-and-reconcile.md)
