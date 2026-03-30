@@ -15,78 +15,98 @@ Java · Spring Boot · Spring Batch · Spring Data JPA · MySQL · Redis · Rabb
 
 ## 시스템 구조
 
-### 평점과 차트 흐름
+### 평점 집계부터 차트 서빙까지
 
 ```mermaid
-flowchart LR
-    subgraph Upstream[Upstream · 평점 입력]
-        direction TB
-        A[사용자 평점 등록]
-        B[Rating API]
-        C[원본 평점 저장]
-        A --> B --> C
+flowchart TD
+    subgraph RatingFlow["평점 저장과 집계"]
+        direction TD
+        A[사용자 평점 등록] --> B[Rating API]
+        B --> C[MySQL 원본 평점]
+        C --> D[AFTER_COMMIT 이벤트]
+        D --> E[RabbitMQ]
+        E --> F[평점 집계 Consumer]
+        F --> G[릴리즈별 평점 집계]
+        H[Anti-Entropy Batch] -. 원본 기준 전체 재집계 .-> G
     end
 
-    subgraph Bridge[비동기 집계 경계]
-        direction TB
-        D[AFTER_COMMIT 이벤트]
-        E[RabbitMQ]
-        F[평점 집계 Consumer]
-        G[릴리즈별 평점 집계]
-        H[Anti-Entropy Batch]
-        D --> E --> F --> G
-        H -. 전체 재집계 보정 .-> G
+    subgraph PublishFlow["차트 생성과 공개"]
+        direction TD
+        G --> I[Chart Batch]
+        I --> J[차트 생성]
+        J --> K[검증]
+        K --> L[공개 버전 전환]
+        L --> M[Redis 캐시]
+        L --> N[Elasticsearch 별칭]
+        L --> O[MySQL 조회 경로]
     end
 
-    subgraph Downstream[Downstream · 차트 공개와 조회]
-        direction TB
-        I[Chart Batch]
-        J[차트 생성]
-        K[검증]
-        L[공개 버전 전환]
-        M[Redis / Elasticsearch / MySQL 폴백]
-        N[Chart API]
-        I --> J --> K --> L --> M
-        N --> M
+    subgraph ReadFlow["차트 조회"]
+        direction TD
+        P[Chart API] --> Q{Redis 캐시 적중}
+        Q -->|예| M
+        Q -->|아니오| N
+        N --> R[응답 조립]
+        N -. 장애 시 .-> O
+        O --> R
+        R --> S[차트 응답 반환]
     end
 
-    C --> D
-    G --> I
+    classDef api fill:#eef2ff,stroke:#6366f1,color:#111827;
+    classDef store fill:#ecfdf5,stroke:#10b981,color:#111827;
+    classDef async fill:#fff7ed,stroke:#f59e0b,color:#111827;
+    classDef batch fill:#fef3c7,stroke:#d97706,color:#111827;
+    classDef query fill:#eff6ff,stroke:#2563eb,color:#111827;
+
+    class A,B,P api;
+    class C,G,M,N,O store;
+    class D,E,F async;
+    class H,I,J,K,L batch;
+    class Q,R,S query;
 ```
 
-### 검수와 보상 흐름
+### 검수부터 적립과 정산까지
 
 ```mermaid
-flowchart LR
-    subgraph Upstream[Upstream · 검수]
-        direction TB
-        A[사용자 기여 제출]
-        B[Moderation API]
-        C[검수 상태 / 이력]
-        D[승인 이벤트 기록]
-        A --> B --> C --> D
+flowchart TD
+    subgraph ModerationFlow["검수와 승인"]
+        direction TD
+        A[사용자 기여 제출] --> B[Moderation API]
+        B --> C[검수 상태 저장]
+        C --> D[검수 이력]
+        C --> E[승인 이벤트 기록]
     end
 
-    subgraph Bridge[도메인 간 전달 경계]
-        direction TB
-        E[Outbox]
-        F[RabbitMQ]
-        E --> F
+    subgraph RewardFlow["승인 이벤트 전달과 적립"]
+        direction TD
+        E --> F[Outbox]
+        F --> G[RabbitMQ]
+        G --> H[Reward Consumer]
+        H --> I[Reward Ledger]
     end
 
-    subgraph Downstream[Downstream · 적립과 정산]
-        direction TB
-        G[Reward Ledger]
-        H[정산 요청]
-        I[예약 금액 계산]
-        J[외부 지급 시도]
-        K[정산 상태 갱신]
-        L[후속 조정 기록]
-        G --> H --> I --> J --> K --> L
+    subgraph SettlementFlow["정산 요청과 외부 지급"]
+        direction TD
+        J[Settlement API] --> K[정산 가능 금액 계산]
+        I -. 적립 원장 기준 .-> K
+        K --> L[정산 요청 생성]
+        L --> M[예약 금액 반영]
+        M --> N[외부 지급 시도]
+        N --> O{지급 결과}
+        O -->|성공| P[지급 완료]
+        O -->|타임아웃| Q[미확정 유지]
+        O -->|늦은 실패 / 정정| R[후속 조정 기록]
     end
 
-    D --> E
-    F --> G
+    classDef api fill:#eef2ff,stroke:#6366f1,color:#111827;
+    classDef store fill:#ecfdf5,stroke:#10b981,color:#111827;
+    classDef async fill:#fff7ed,stroke:#f59e0b,color:#111827;
+    classDef state fill:#fef2f2,stroke:#ef4444,color:#111827;
+
+    class A,B,J api;
+    class C,D,E,I store;
+    class F,G,H async;
+    class K,L,M,N,O,P,Q,R state;
 ```
 
 ---
