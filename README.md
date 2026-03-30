@@ -31,7 +31,6 @@
 
 - [유저 가중치 변경이 만드는 쓰기 증폭을 줄이기 위한 구조 재설계](portfolio/user-credibility-batch.md)
 - [평점 조회와 차트 배치가 함께 쓰는 공통 집계 계층 만들기](portfolio/rating-aggregation.md)
-- [차트 재생성 배치에서 쓰기 병목과 ES `source fetch` 병목 줄이기](portfolio/chart-batch-performance.md)
 - [차트 공개 일관성을 위해 publish 파이프라인 다시 세우기](portfolio/chart-pipeline.md)
 - [차트 API 읽기 경로를 캐시·검색·fallback·메타데이터로 분리해 응답 병목 줄이기](portfolio/chart-serving.md)
 - [검수 적체와 SLA를 다루는 운영형 moderation queue 만들기](portfolio/moderation-queue.md)
