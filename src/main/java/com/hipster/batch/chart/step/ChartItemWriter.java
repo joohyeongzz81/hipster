@@ -1,6 +1,5 @@
 package com.hipster.batch.chart.step;
 
-import com.hipster.batch.chart.benchmark.ChartProjectionWriteMode;
 import com.hipster.batch.chart.dto.ChartScoreDto;
 import com.hipster.batch.chart.repository.ChartReleaseMetadataQueryRepository;
 import com.hipster.batch.chart.repository.ChartScoreQueryRepository;
@@ -26,15 +25,10 @@ public class ChartItemWriter implements ItemWriter<ChartScoreDto> {
 
     @Override
     public void write(final @NonNull Chunk<? extends ChartScoreDto> chunk) {
-        writeWithBreakdown(chunk, defaultWriteMode());
+        writeWithBreakdown(chunk);
     }
 
     public WriteBreakdown writeWithBreakdown(final @NonNull Chunk<? extends ChartScoreDto> chunk) {
-        return writeWithBreakdown(chunk, defaultWriteMode());
-    }
-
-    public WriteBreakdown writeWithBreakdown(final @NonNull Chunk<? extends ChartScoreDto> chunk,
-                                             final ChartProjectionWriteMode writeMode) {
         final List<ChartScoreDto> items = new ArrayList<>(chunk.getItems());
         if (items.isEmpty()) {
             return new WriteBreakdown(0, 0, 0, 0);
@@ -56,19 +50,11 @@ public class ChartItemWriter implements ItemWriter<ChartScoreDto> {
         final long serializationMillis = Duration.ofNanos(System.nanoTime() - serializationStart).toMillis();
 
         final long upsertStart = System.nanoTime();
-        if (writeMode == ChartProjectionWriteMode.LIGHT_STAGE_INSERT) {
-            chartScoreQueryRepository.bulkInsertBenchmarkLightStageChartScores(enrichedItems);
-        } else if (writeMode == ChartProjectionWriteMode.PUBLISH_STAGE) {
-            chartScoreQueryRepository.bulkUpsertPublishStageChartScores(enrichedItems);
-        } else if (writeMode == ChartProjectionWriteMode.STAGING_INSERT) {
-            chartScoreQueryRepository.bulkInsertBenchmarkStageChartScores(enrichedItems);
-        } else {
-            chartScoreQueryRepository.bulkUpsertChartScores(enrichedItems);
-        }
+        chartScoreQueryRepository.bulkUpsertPublishStageChartScores(enrichedItems);
         final long upsertMillis = Duration.ofNanos(System.nanoTime() - upsertStart).toMillis();
 
-        log.debug("[CHART BATCH] mode={} chunk={} metadata={}ms serialization={}ms upsert={}ms",
-                writeMode, enrichedItems.size(), metadataFetchMillis, serializationMillis, upsertMillis);
+        log.debug("[CHART BATCH] chunk={} metadata={}ms serialization={}ms upsert={}ms",
+                enrichedItems.size(), metadataFetchMillis, serializationMillis, upsertMillis);
 
         return new WriteBreakdown(
                 enrichedItems.size(),
@@ -76,10 +62,6 @@ public class ChartItemWriter implements ItemWriter<ChartScoreDto> {
                 serializationMillis,
                 upsertMillis
         );
-    }
-
-    private ChartProjectionWriteMode defaultWriteMode() {
-        return ChartProjectionWriteMode.PUBLISH_STAGE;
     }
 
     private ChartScoreDto enrich(final ChartScoreDto dto,

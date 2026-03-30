@@ -12,7 +12,6 @@ import java.util.List;
 public class ChartScoreIndexSourceQueryRepository {
 
     private static final String PUBLISHED_TABLE = "chart_scores";
-    private static final String BENCHMARK_LIGHT_STAGE_TABLE = "chart_scores_stage_light_bench";
 
     private final JdbcTemplate jdbcTemplate;
     private final ChartPublishProperties chartPublishProperties;
@@ -95,20 +94,17 @@ public class ChartScoreIndexSourceQueryRepository {
         return switch (sourceType) {
             case PUBLISHED -> PUBLISHED_TABLE;
             case STAGE -> chartPublishProperties.getStageTableName();
-            case BENCHMARK_LIGHT_STAGE -> BENCHMARK_LIGHT_STAGE_TABLE;
         };
     }
 
     private String resolveCursorColumn(final ChartScoreIndexSourceType sourceType) {
         return switch (sourceType) {
-            case BENCHMARK_LIGHT_STAGE -> "release_id";
             case PUBLISHED, STAGE -> "id";
         };
     }
 
     private String resolveSelectIdExpression(final ChartScoreIndexSourceType sourceType) {
         return switch (sourceType) {
-            case BENCHMARK_LIGHT_STAGE -> "release_id";
             case PUBLISHED, STAGE -> "id";
         };
     }
@@ -139,7 +135,6 @@ public class ChartScoreIndexSourceQueryRepository {
 
     public enum ChartScoreIndexSourceType {
         PUBLISHED,
-        STAGE,
-        BENCHMARK_LIGHT_STAGE
+        STAGE
     }
 }

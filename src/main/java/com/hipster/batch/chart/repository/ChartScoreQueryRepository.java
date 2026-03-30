@@ -1,6 +1,5 @@
 package com.hipster.batch.chart.repository;
 
-import com.hipster.batch.chart.benchmark.ChartProjectionWriteMode;
 import com.hipster.batch.chart.dto.ChartScoreDto;
 import com.hipster.chart.config.ChartPublishProperties;
 import lombok.RequiredArgsConstructor;
@@ -15,8 +14,6 @@ public class ChartScoreQueryRepository {
 
     private static final String PUBLISHED_TABLE = "chart_scores";
     private static final String FAILED_PUBLISHED_TABLE = "chart_scores_failed";
-    private static final String BENCHMARK_STAGE_TABLE = "chart_scores_stage_bench";
-    private static final String BENCHMARK_LIGHT_STAGE_TABLE = "chart_scores_stage_light_bench";
 
     private final JdbcTemplate jdbcTemplate;
     private final ChartPublishProperties chartPublishProperties;
@@ -65,47 +62,6 @@ public class ChartScoreQueryRepository {
         });
     }
 
-    public void bulkInsertBenchmarkStageChartScores(final List<ChartScoreDto> scores) {
-        if (scores == null || scores.isEmpty()) return;
-
-        final String sql = """
-                INSERT INTO chart_scores_stage_bench (
-                    release_id, bayesian_score, weighted_avg_rating,
-                    effective_votes, total_ratings, is_esoteric,
-                    genre_ids, release_type, release_year, descriptor_ids, location_id, languages,
-                    last_updated, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())
-                """;
-
-        jdbcTemplate.batchUpdate(sql, scores, scores.size(), (ps, dto) -> {
-            bindChartScore(ps, dto);
-        });
-    }
-
-    public void bulkInsertBenchmarkLightStageChartScores(final List<ChartScoreDto> scores) {
-        if (scores == null || scores.isEmpty()) return;
-
-        final String sql = """
-                INSERT INTO chart_scores_stage_light_bench (
-                    release_id, bayesian_score, weighted_avg_rating,
-                    effective_votes, total_ratings, is_esoteric,
-                    genre_ids, release_type, release_year, descriptor_ids, location_id, languages,
-                    last_updated, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())
-                """;
-
-        jdbcTemplate.batchUpdate(sql, scores, scores.size(), (ps, dto) -> {
-            bindChartScore(ps, dto);
-        });
-    }
-
-    public void prepareBenchmarkStageTable() {
-        jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS " + BENCHMARK_STAGE_TABLE + " LIKE chart_scores");
-        jdbcTemplate.execute("TRUNCATE TABLE " + BENCHMARK_STAGE_TABLE);
-    }
-
     public void preparePublishStageTable() {
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS " + chartPublishProperties.getStageTableName() + " LIKE " + PUBLISHED_TABLE);
         jdbcTemplate.execute("TRUNCATE TABLE " + chartPublishProperties.getStageTableName());
@@ -136,33 +92,6 @@ public class ChartScoreQueryRepository {
         );
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS " + chartPublishProperties.getStageTableName() + " LIKE " + PUBLISHED_TABLE);
         jdbcTemplate.execute("TRUNCATE TABLE " + chartPublishProperties.getStageTableName());
-    }
-
-    public void prepareBenchmarkLightStageTable() {
-        jdbcTemplate.execute("DROP TABLE IF EXISTS " + BENCHMARK_LIGHT_STAGE_TABLE);
-        jdbcTemplate.execute("""
-                CREATE TABLE chart_scores_stage_light_bench (
-                    release_id BIGINT NOT NULL,
-                    bayesian_score DOUBLE NOT NULL,
-                    weighted_avg_rating DOUBLE NOT NULL,
-                    effective_votes DOUBLE NOT NULL,
-                    total_ratings BIGINT NOT NULL,
-                    is_esoteric BIT(1) NOT NULL,
-                    descriptor_id BIGINT NULL,
-                    genre_id BIGINT NULL,
-                    language VARCHAR(16) NULL,
-                    location_id BIGINT NULL,
-                    release_type VARCHAR(32) NULL,
-                    release_year INT NULL,
-                    descriptor_ids JSON NULL,
-                    genre_ids JSON NULL,
-                    languages JSON NULL,
-                    last_updated DATETIME(6) NOT NULL,
-                    created_at DATETIME(6) NOT NULL,
-                    updated_at DATETIME(6) NOT NULL,
-                    PRIMARY KEY (release_id)
-                )
-                """);
     }
 
     private void bindChartScore(final java.sql.PreparedStatement ps, final ChartScoreDto dto) throws java.sql.SQLException {

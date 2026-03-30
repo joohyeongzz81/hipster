@@ -20,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -66,95 +65,8 @@ public class ChartElasticsearchIndexService {
         rebuildIndex(buildCandidateIndexName(version), batchSize, ChartScoreIndexSourceType.STAGE);
     }
 
-    @Transactional(readOnly = true)
-    public ElasticsearchIndexSample benchmarkSample(final int startPage, final int pageCount, final int batchSize) {
-        final String sampleIndexName = chartSearchIndexName + "_sample";
-        final IndexCoordinates indexCoordinates = IndexCoordinates.of(sampleIndexName);
-
-        recreateIndex(indexCoordinates);
-
-        final long totalChartScores = chartScoreIndexSourceQueryRepository.countRows(ChartScoreIndexSourceType.PUBLISHED);
-        final long totalPages = totalChartScores == 0 ? 0 : (long) Math.ceil((double) totalChartScores / batchSize);
-        long cursorId = chartScoreIndexSourceQueryRepository.resolveStartAfterId(
-                ChartScoreIndexSourceType.PUBLISHED,
-                startPage,
-                batchSize
-        );
-
-        long indexedCount = 0L;
-        long totalFetchMillis = 0L;
-        long totalIndexMillis = 0L;
-        int sampledPages = 0;
-
-        for (int pageNumber = startPage; pageNumber < startPage + pageCount; pageNumber++) {
-            final long fetchStart = System.nanoTime();
-            final List<ChartScoreIndexRow> rows = chartScoreIndexSourceQueryRepository.findBatchAfterId(
-                    ChartScoreIndexSourceType.PUBLISHED,
-                    cursorId,
-                    batchSize
-            );
-            final long fetchMillis = Duration.ofNanos(System.nanoTime() - fetchStart).toMillis();
-
-            if (rows.isEmpty()) {
-                break;
-            }
-
-            final List<ChartDocument> documents = rows.stream()
-                    .map(this::toDocument)
-                    .toList();
-
-            final long indexStart = System.nanoTime();
-            elasticsearchOperations.bulkIndex(toIndexQueries(documents), indexCoordinates);
-            final long indexMillis = Duration.ofNanos(System.nanoTime() - indexStart).toMillis();
-
-            indexedCount += documents.size();
-            totalFetchMillis += fetchMillis;
-            totalIndexMillis += indexMillis;
-            sampledPages++;
-            cursorId = rows.get(rows.size() - 1).id();
-
-            final double localProgressPercent = pageCount == 0 ? 100.0 : ((double) sampledPages / pageCount) * 100.0;
-            final double globalProgressPercent = totalPages == 0
-                    ? 100.0
-                    : ((double) (pageNumber + 1) / totalPages) * 100.0;
-            log.info(
-                    "[CHART BATCH][ES SAMPLE] progress local={}/{} ({}%), globalPage={}/{} ({}%), docsIndexed={}, fetch={}ms, index={}ms",
-                    sampledPages,
-                    pageCount,
-                    String.format("%.1f", localProgressPercent),
-                    pageNumber + 1,
-                    totalPages,
-                    String.format("%.1f", globalProgressPercent),
-                    indexedCount,
-                    fetchMillis,
-                    indexMillis
-            );
-        }
-
-        final long refreshStart = System.nanoTime();
-        finalizeIndex(indexCoordinates);
-        final long refreshMillis = Duration.ofNanos(System.nanoTime() - refreshStart).toMillis();
-
-        return new ElasticsearchIndexSample(
-                sampleIndexName,
-                totalChartScores,
-                totalPages,
-                batchSize,
-                startPage,
-                sampledPages,
-                indexedCount,
-                totalFetchMillis,
-                totalIndexMillis,
-                refreshMillis
-        );
-    }
-
     public String buildCandidateIndexName(final String version) {
         return chartSearchIndexName + "_" + normalizeVersion(version);
-    }
-
-    public String buildBenchmarkIndexName(final String suffix) {
-        return chartSearchIndexName + "_full_bench_" + normalizeVersion(suffix);
     }
 
     public String buildCandidateIndexName(final LocalDateTime logicalAsOfAt) {
@@ -199,83 +111,6 @@ public class ChartElasticsearchIndexService {
         final String aliasName = resolvePublishedAliasName();
         final String aliasTarget = resolveAliasTarget(aliasName);
         return aliasTarget != null ? aliasName : chartSearchIndexName;
-    }
-
-    @Transactional(readOnly = true)
-    public ElasticsearchIndexSample benchmarkFullRun(final ChartScoreIndexSourceType sourceType,
-                                                     final int batchSize,
-                                                     final String targetIndexName) {
-        final IndexCoordinates indexCoordinates = IndexCoordinates.of(targetIndexName);
-
-        recreateIndex(indexCoordinates);
-
-        final long totalChartScores = chartScoreIndexSourceQueryRepository.countRows(sourceType);
-        final long totalPages = totalChartScores == 0 ? 0 : (long) Math.ceil((double) totalChartScores / batchSize);
-        long cursorId = 0L;
-        long indexedCount = 0L;
-        long totalFetchMillis = 0L;
-        long totalIndexMillis = 0L;
-        int sampledPages = 0;
-
-        while (true) {
-            final long fetchStart = System.nanoTime();
-            final List<ChartScoreIndexRow> rows = chartScoreIndexSourceQueryRepository.findBatchAfterId(
-                    sourceType,
-                    cursorId,
-                    batchSize
-            );
-            final long fetchMillis = Duration.ofNanos(System.nanoTime() - fetchStart).toMillis();
-
-            if (rows.isEmpty()) {
-                break;
-            }
-
-            final List<ChartDocument> documents = rows.stream()
-                    .map(this::toDocument)
-                    .toList();
-
-            final long indexStart = System.nanoTime();
-            elasticsearchOperations.bulkIndex(toIndexQueries(documents), indexCoordinates);
-            final long indexMillis = Duration.ofNanos(System.nanoTime() - indexStart).toMillis();
-
-            indexedCount += documents.size();
-            totalFetchMillis += fetchMillis;
-            totalIndexMillis += indexMillis;
-            sampledPages++;
-            cursorId = rows.get(rows.size() - 1).id();
-
-            final double globalProgressPercent = totalPages == 0
-                    ? 100.0
-                    : ((double) sampledPages / totalPages) * 100.0;
-            log.info(
-                    "[CHART BATCH][ES FULL RUN] progress page={}/{} ({}%), sourceType={}, index={}, docsIndexed={}, fetch={}ms, index={}ms",
-                    sampledPages,
-                    totalPages,
-                    String.format("%.1f", globalProgressPercent),
-                    sourceType,
-                    targetIndexName,
-                    indexedCount,
-                    fetchMillis,
-                    indexMillis
-            );
-        }
-
-        final long refreshStart = System.nanoTime();
-        finalizeIndex(indexCoordinates);
-        final long refreshMillis = Duration.ofNanos(System.nanoTime() - refreshStart).toMillis();
-
-        return new ElasticsearchIndexSample(
-                targetIndexName,
-                totalChartScores,
-                totalPages,
-                batchSize,
-                0,
-                sampledPages,
-                indexedCount,
-                totalFetchMillis,
-                totalIndexMillis,
-                refreshMillis
-        );
     }
 
     private void rebuildIndex(final String indexName,
@@ -477,44 +312,4 @@ public class ChartElasticsearchIndexService {
         }
     }
 
-    public record ElasticsearchIndexSample(
-            String sampleIndexName,
-            long totalChartScores,
-            long totalPages,
-            int batchSize,
-            int startPage,
-            int sampledPages,
-            long indexedDocuments,
-            long totalFetchMillis,
-            long totalIndexMillis,
-            long refreshMillis
-    ) {
-        public long totalMillis() {
-            return totalFetchMillis + totalIndexMillis + refreshMillis;
-        }
-
-        public double avgFetchMillisPerPage() {
-            return sampledPages == 0 ? 0.0 : (double) totalFetchMillis / sampledPages;
-        }
-
-        public double avgIndexMillisPerPage() {
-            return sampledPages == 0 ? 0.0 : (double) totalIndexMillis / sampledPages;
-        }
-
-        public double avgTotalMillisPerPage() {
-            return sampledPages == 0 ? 0.0 : (double) totalMillis() / sampledPages;
-        }
-
-        public double docsPerSecond() {
-            final double seconds = totalIndexMillis / 1000.0;
-            return seconds <= 0 ? indexedDocuments : indexedDocuments / seconds;
-        }
-
-        public double estimatedFullRunMinutes() {
-            if (sampledPages == 0 || totalPages == 0) {
-                return 0.0;
-            }
-            return (avgTotalMillisPerPage() * totalPages) / 1000.0 / 60.0;
-        }
-    }
 }
