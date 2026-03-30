@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="300" viewBox="0 0 1100 300" role="img" aria-labelledby="title desc">
+  <title id="title">검수와 보상 흐름</title>
+  <desc id="desc">검수 요청부터 승인 이벤트, 적립 원장, 정산, 외부 지급과 후속 조정까지의 흐름</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/>
+    </marker>
+    <style>
+      .bg { fill: #f8fafc; }
+      .box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; rx: 14; ry: 14; }
+      .accent { fill: #fff7ed; stroke: #fb923c; }
+      .storage { fill: #fef2f2; stroke: #f87171; }
+      .state { fill: #eef2ff; stroke: #818cf8; }
+      .line { stroke: #374151; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .title { font: 700 28px 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; fill: #111827; }
+      .label { font: 600 17px 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; fill: #111827; }
+      .small { font: 500 14px 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; fill: #374151; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1100" height="300"/>
+  <text class="title" x="50" y="48">검수와 보상 흐름</text>
+
+  <rect class="box accent" x="50" y="100" width="150" height="70"/>
+  <text class="label" x="125" y="142" text-anchor="middle">검수 요청 API</text>
+
+  <rect class="box storage" x="250" y="100" width="180" height="70"/>
+  <text class="label" x="340" y="132" text-anchor="middle">검수 상태 / 이력</text>
+
+  <rect class="box accent" x="480" y="100" width="170" height="70"/>
+  <text class="label" x="565" y="132" text-anchor="middle">승인 이벤트 기록</text>
+
+  <rect class="box accent" x="700" y="100" width="120" height="70"/>
+  <text class="label" x="760" y="132" text-anchor="middle">Outbox</text>
+
+  <rect class="box accent" x="870" y="100" width="150" height="70"/>
+  <text class="label" x="945" y="132" text-anchor="middle">Reward Ledger</text>
+
+  <rect class="box state" x="820" y="210" width="140" height="56"/>
+  <text class="label" x="890" y="244" text-anchor="middle">정산 요청</text>
+
+  <rect class="box state" x="620" y="210" width="140" height="56"/>
+  <text class="label" x="690" y="244" text-anchor="middle">예약 금액 계산</text>
+
+  <rect class="box state" x="420" y="210" width="140" height="56"/>
+  <text class="label" x="490" y="244" text-anchor="middle">외부 지급</text>
+
+  <rect class="box state" x="180" y="210" width="180" height="56"/>
+  <text class="label" x="270" y="232" text-anchor="middle">미확정 / 성공 / 실패</text>
+  <text class="small" x="270" y="250" text-anchor="middle">후속 조정으로 수습</text>
+
+  <path class="line" d="M 200 135 L 250 135"/>
+  <path class="line" d="M 430 135 L 480 135"/>
+  <path class="line" d="M 650 135 L 700 135"/>
+  <path class="line" d="M 820 135 L 870 135"/>
+  <path class="line" d="M 945 170 L 945 190 L 890 190 L 890 210"/>
+  <path class="line" d="M 820 238 L 760 238"/>
+  <path class="line" d="M 620 238 L 560 238"/>
+  <path class="line" d="M 420 238 L 360 238"/>
+</svg>
