@@ -18,101 +18,75 @@ Java · Spring Boot · Spring Batch · Spring Data JPA · MySQL · Redis · Rabb
 ### 평점과 차트 흐름
 
 ```mermaid
-flowchart TD
-    A[사용자 평점 등록] --> B[Rating API]
-    B --> C[원본 평점 저장]
-    C --> D[AFTER_COMMIT 이벤트]
-    D --> E[RabbitMQ]
-    E --> F[평점 집계 Consumer]
-    F --> G[릴리즈별 평점 집계]
-    G --> H[Anti-Entropy 전체 재집계]
-
-    subgraph WritePath[쓰기 경로]
-        B
-        C
-        D
-        E
-        F
-        G
-        H
+flowchart LR
+    subgraph Upstream[Upstream · 평점 입력]
+        direction TB
+        A[사용자 평점 등록]
+        B[Rating API]
+        C[원본 평점 저장]
+        A --> B --> C
     end
 
-    G --> I[Chart Batch]
-    I --> J[차트 생성]
-    J --> K[검증]
-    K --> L[공개 버전 전환]
-
-    subgraph PublishPath[차트 생성 / 공개]
-        I
-        J
-        K
-        L
+    subgraph Bridge[비동기 집계 경계]
+        direction TB
+        D[AFTER_COMMIT 이벤트]
+        E[RabbitMQ]
+        F[평점 집계 Consumer]
+        G[릴리즈별 평점 집계]
+        H[Anti-Entropy Batch]
+        D --> E --> F --> G
+        H -. 전체 재집계 보정 .-> G
     end
 
-    M[차트 조회 API] --> N{Redis 캐시 적중}
-    N -->|예| O[캐시 응답]
-    N -->|아니오| P[Elasticsearch 검색]
-    P --> R[응답 조립]
-    P --> Q[장애 시 MySQL 폴백]
-    Q --> R
-    L --> R
-    O --> S[차트 응답 반환]
-    R --> S
-
-    subgraph ReadPath[조회 경로]
-        M
-        N
-        O
-        P
-        Q
-        R
-        S
+    subgraph Downstream[Downstream · 차트 공개와 조회]
+        direction TB
+        I[Chart Batch]
+        J[차트 생성]
+        K[검증]
+        L[공개 버전 전환]
+        M[Redis / Elasticsearch / MySQL 폴백]
+        N[Chart API]
+        I --> J --> K --> L --> M
+        N --> M
     end
+
+    C --> D
+    G --> I
 ```
 
 ### 검수와 보상 흐름
 
 ```mermaid
-flowchart TD
-    A[사용자 기여 제출] --> B[Moderation API]
-    B --> C[검수 상태 저장]
-    C --> D[검수 이력 기록]
-    C --> E[승인 이벤트 기록]
-
-    subgraph Moderation[검수 경로]
-        B
-        C
-        D
-        E
+flowchart LR
+    subgraph Upstream[Upstream · 검수]
+        direction TB
+        A[사용자 기여 제출]
+        B[Moderation API]
+        C[검수 상태 / 이력]
+        D[승인 이벤트 기록]
+        A --> B --> C --> D
     end
 
-    E --> F[Outbox]
-    F --> G[RabbitMQ]
-    G --> H[Reward Ledger]
-
-    subgraph Reward[적립 경로]
-        F
-        G
-        H
+    subgraph Bridge[도메인 간 전달 경계]
+        direction TB
+        E[Outbox]
+        F[RabbitMQ]
+        E --> F
     end
 
-    H --> I[정산 요청 생성]
-    I --> J[예약 금액 계산]
-    J --> K[외부 지급 시도]
-    K --> L{지급 결과}
-    L -->|성공| M[지급 완료]
-    L -->|타임아웃| N[미확정 상태 유지]
-    L -->|늦은 실패| O[후속 조정 기록]
-
-    subgraph Settlement[정산 경로]
-        I
-        J
-        K
-        L
-        M
-        N
-        O
+    subgraph Downstream[Downstream · 적립과 정산]
+        direction TB
+        G[Reward Ledger]
+        H[정산 요청]
+        I[예약 금액 계산]
+        J[외부 지급 시도]
+        K[정산 상태 갱신]
+        L[후속 조정 기록]
+        G --> H --> I --> J --> K --> L
     end
+
+    D --> E
+    F --> G
 ```
 
 ---
