@@ -17,11 +17,103 @@ Java · Spring Boot · Spring Batch · Spring Data JPA · MySQL · Redis · Rabb
 
 ### 평점과 차트 흐름
 
-![평점과 차트 흐름](./portfolio/assets/rating-chart-flow.svg)
+```mermaid
+flowchart TD
+    A[사용자 평점 등록] --> B[Rating API]
+    B --> C[원본 평점 저장]
+    C --> D[AFTER_COMMIT 이벤트]
+    D --> E[RabbitMQ]
+    E --> F[평점 집계 Consumer]
+    F --> G[릴리즈별 평점 집계]
+    G --> H[Anti-Entropy 전체 재집계]
+
+    subgraph WritePath[쓰기 경로]
+        B
+        C
+        D
+        E
+        F
+        G
+        H
+    end
+
+    G --> I[Chart Batch]
+    I --> J[차트 생성]
+    J --> K[검증]
+    K --> L[공개 버전 전환]
+
+    subgraph PublishPath[차트 생성 / 공개]
+        I
+        J
+        K
+        L
+    end
+
+    M[차트 조회 API] --> N{Redis 캐시 적중}
+    N -->|예| O[캐시 응답]
+    N -->|아니오| P[Elasticsearch 검색]
+    P --> R[응답 조립]
+    P --> Q[장애 시 MySQL 폴백]
+    Q --> R
+    L --> R
+    O --> S[차트 응답 반환]
+    R --> S
+
+    subgraph ReadPath[조회 경로]
+        M
+        N
+        O
+        P
+        Q
+        R
+        S
+    end
+```
 
 ### 검수와 보상 흐름
 
-![검수와 보상 흐름](./portfolio/assets/reward-settlement-flow.svg)
+```mermaid
+flowchart TD
+    A[사용자 기여 제출] --> B[Moderation API]
+    B --> C[검수 상태 저장]
+    C --> D[검수 이력 기록]
+    C --> E[승인 이벤트 기록]
+
+    subgraph Moderation[검수 경로]
+        B
+        C
+        D
+        E
+    end
+
+    E --> F[Outbox]
+    F --> G[RabbitMQ]
+    G --> H[Reward Ledger]
+
+    subgraph Reward[적립 경로]
+        F
+        G
+        H
+    end
+
+    H --> I[정산 요청 생성]
+    I --> J[예약 금액 계산]
+    J --> K[외부 지급 시도]
+    K --> L{지급 결과}
+    L -->|성공| M[지급 완료]
+    L -->|타임아웃| N[미확정 상태 유지]
+    L -->|늦은 실패| O[후속 조정 기록]
+
+    subgraph Settlement[정산 경로]
+        I
+        J
+        K
+        L
+        M
+        N
+        O
+    end
+```
 
 ---
 
