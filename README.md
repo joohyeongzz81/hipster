@@ -8,16 +8,7 @@ Java 17 · Spring Boot 3.2.3 · Spring Data JPA · Querydsl · Spring Batch · M
 
 ## 📐 Architecture Overview
 
-- 실선: 동기 처리
-- 점선: 비동기 이벤트 · 배치 · 재시도
-- 파란 박스: 핵심 처리
-- 노란 박스: 비동기 · 배치
-- 회색 원통: 저장소 · 인프라
-- 초록 박스: 외부 시스템
-- 분홍 박스: 복구 · 보정 경로
-
 ```mermaid
-%%{init: {'theme':'base'}}%%
 flowchart LR
     U[사용자]
     DB[(MySQL)]
@@ -114,7 +105,6 @@ flowchart LR
 ### 평점 흐름
 
 ```mermaid
-%%{init: {'theme':'base'}}%%
 flowchart LR
     U[사용자]
     API[평점 등록·수정·삭제]
@@ -150,7 +140,6 @@ flowchart LR
 #### 차트 배치·공개
 
 ```mermaid
-%%{init: {'theme':'base'}}%%
 flowchart LR
     RS[평점 집계]
     BATCH[차트 배치 계산]
@@ -186,7 +175,6 @@ flowchart LR
 #### 차트 조회·서빙
 
 ```mermaid
-%%{init: {'theme':'base'}}%%
 flowchart LR
     USER[사용자]
     API[차트 조회 API]
@@ -216,7 +204,6 @@ flowchart LR
 #### 검수·승인·적립
 
 ```mermaid
-%%{init: {'theme':'base'}}%%
 flowchart LR
     CAT[카탈로그 등록 요청]
     REV[리뷰 게시 요청]
@@ -257,7 +244,6 @@ flowchart LR
 #### 정산 요청·지급·보정
 
 ```mermaid
-%%{init: {'theme':'base'}}%%
 flowchart LR
     LEDGER[적립 원장]
     BAL[정산 가능 금액 계산]
