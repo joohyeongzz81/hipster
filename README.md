@@ -1,168 +1,325 @@
 # Hipster
 
-커뮤니티 기반 음악 평가 및 차트 플랫폼 백엔드
+> 사용자 평점을 집계해 차트를 제공하고, 사용자 기여는 검수와 보상 흐름으로 관리하는 음악 레이팅 플랫폼 백엔드입니다. 조회 성능이 중요한 영역은 집계·캐시·검색 경로로 분리하고, 보상과 정산은 상태를 끝까지 설명할 수 있는 구조로 설계했습니다.
 
-> 사용자 기여로 카탈로그를 쌓고, 가중 평점으로 차트를 만드는 시스템입니다.  
-> 집계 정합성, 공개 일관성, 보상 추적 가능성을 기능별로 분리해 설계하고 구현했습니다.
+## 🛠 Tech Stack
 
----
+Java 17 · Spring Boot 3.2.3 · Spring Data JPA · Querydsl · Spring Batch · MySQL · Redis · Elasticsearch · RabbitMQ · Prometheus · Grafana · Docker
 
-## 기술 스택
+## 📐 Architecture Overview
 
-Java · Spring Boot · Spring Batch · Spring Data JPA · MySQL · Redis · RabbitMQ · Elasticsearch · Prometheus · Grafana
-
----
-
-## 시스템 구조
-
-### 평점 집계부터 차트 서빙까지
-
-```mermaid
-flowchart TD
-    subgraph RatingFlow["평점 저장과 집계"]
-        direction TD
-        A[사용자 평점 등록] --> B[Rating API]
-        B --> C[MySQL 원본 평점]
-        C --> D[AFTER_COMMIT 이벤트]
-        D --> E[RabbitMQ]
-        E --> F[평점 집계 Consumer]
-        F --> G[릴리즈별 평점 집계]
-        H[Anti-Entropy Batch] -. 원본 기준 전체 재집계 .-> G
-    end
-
-    subgraph PublishFlow["차트 생성과 공개"]
-        direction TD
-        G --> I[Chart Batch]
-        I --> J[차트 생성]
-        J --> K[검증]
-        K --> L[공개 버전 전환]
-        L --> M[Redis 캐시]
-        L --> N[Elasticsearch 별칭]
-        L --> O[MySQL 조회 경로]
-    end
-
-    subgraph ReadFlow["차트 조회"]
-        direction TD
-        P[Chart API] --> Q{Redis 캐시 적중}
-        Q -->|예| M
-        Q -->|아니오| N
-        N --> R[응답 조립]
-        N -. 장애 시 .-> O
-        O --> R
-        R --> S[차트 응답 반환]
-    end
-
-    classDef api fill:#eef2ff,stroke:#6366f1,color:#111827;
-    classDef store fill:#ecfdf5,stroke:#10b981,color:#111827;
-    classDef async fill:#fff7ed,stroke:#f59e0b,color:#111827;
-    classDef batch fill:#fef3c7,stroke:#d97706,color:#111827;
-    classDef query fill:#eff6ff,stroke:#2563eb,color:#111827;
-
-    class A,B,P api;
-    class C,G,M,N,O store;
-    class D,E,F async;
-    class H,I,J,K,L batch;
-    class Q,R,S query;
-```
-
-### 검수부터 적립과 정산까지
+- 실선: 동기 처리
+- 점선: 비동기 이벤트 · 배치 · 재시도
+- 파란 박스: 핵심 처리
+- 노란 박스: 비동기 · 배치
+- 회색 원통: 저장소 · 인프라
+- 초록 박스: 외부 시스템
+- 분홍 박스: 복구 · 보정 경로
 
 ```mermaid
-flowchart TD
-    subgraph ModerationFlow["검수와 승인"]
-        direction TD
-        A[사용자 기여 제출] --> B[Moderation API]
-        B --> C[검수 상태 저장]
-        C --> D[검수 이력]
-        C --> E[승인 이벤트 기록]
+%%{init: {'theme':'base'}}%%
+flowchart LR
+    U[사용자]
+    DB[(MySQL)]
+    MQ[RabbitMQ]
+    CACHE[(Redis)]
+    ES[(Elasticsearch)]
+    PAY[지급 게이트웨이]
+
+    subgraph SYS[Hipster 시스템]
+        API[API 서버]
+        CAT[카탈로그·검수]
+        RATE[평점]
+        SUM[평점 집계]
+        CHART[차트 배치·서빙]
+        MONEY[보상·정산]
     end
 
-    subgraph RewardFlow["승인 이벤트 전달과 적립"]
-        direction TD
-        E --> F[Outbox]
-        F --> G[RabbitMQ]
-        G --> H[Reward Consumer]
-        H --> I[Reward Ledger]
-    end
+    U --> API
 
-    subgraph SettlementFlow["정산 요청과 외부 지급"]
-        direction TD
-        J[Settlement API] --> K[정산 가능 금액 계산]
-        I -. 적립 원장 기준 .-> K
-        K --> L[정산 요청 생성]
-        L --> M[예약 금액 반영]
-        M --> N[외부 지급 시도]
-        N --> O{지급 결과}
-        O -->|성공| P[지급 완료]
-        O -->|타임아웃| Q[미확정 유지]
-        O -->|늦은 실패 / 정정| R[후속 조정 기록]
-    end
+    API --> CAT
+    API --> RATE
+    API --> CHART
+    API --> MONEY
 
-    classDef api fill:#eef2ff,stroke:#6366f1,color:#111827;
-    classDef store fill:#ecfdf5,stroke:#10b981,color:#111827;
-    classDef async fill:#fff7ed,stroke:#f59e0b,color:#111827;
-    classDef state fill:#fef2f2,stroke:#ef4444,color:#111827;
+    CAT --> DB
+    RATE --> DB
+    SUM --> DB
+    CHART --> DB
+    MONEY --> DB
 
-    class A,B,J api;
-    class C,D,E,I store;
-    class F,G,H async;
-    class K,L,M,N,O,P,Q,R state;
+    RATE -.-> MQ
+    MQ -.-> SUM
+    SUM -.-> CHART
+
+    CHART --> CACHE
+    CHART --> ES
+    MONEY --> PAY
+
+    classDef process fill:#eaf4ff,stroke:#5b8def,color:#1f2937,stroke-width:1.2px;
+    classDef batch fill:#fff4cc,stroke:#d4a017,color:#1f2937,stroke-width:1.2px;
+    classDef store fill:#f3f4f6,stroke:#9ca3af,color:#1f2937,stroke-width:1.2px;
+    classDef external fill:#e8f7e8,stroke:#58a55c,color:#1f2937,stroke-width:1.2px;
+
+    class API,CAT,RATE,SUM,CHART,MONEY process;
+    class MQ batch;
+    class DB,CACHE,ES store;
+    class U,PAY external;
 ```
 
----
+## ⚡ Key Achievements
 
-## 핵심 구현 문서
+### 조회 / 응답 성능
 
-### 1. [평점 집계 계층을 분리하고 결과적 일관성으로 수렴시키기](./portfolio/rating-aggregation.md)
+모든 수치는 로컬 환경 기준입니다.  
 
-- **문제:** 평균 평점 조회와 가중치 반영이 같은 경로에 묶여 있어, 조회가 느려지고 가중치 변경이 과거 평점 재기록으로 번졌습니다.
-- **해결:** 원본 평점 저장과 집계 갱신을 분리하고, 집계는 비동기 반영과 전체 재집계 보정으로 수렴시키도록 바꿨습니다.
-- **결과:** 평점 저장은 원본 반영까지만 직접 책임지고, 조회와 차트가 읽는 집계 결과는 후행 경로로 분리했습니다. 릴리즈 조회 응답은 `806ms -> 20ms`, 동시 100건 등록 평균 응답은 `126ms -> 12.95ms`로 줄었습니다.
+| 항목 | 데이터 규모 · 조건 | Before | After |
+|---|---|---:|---:|
+| 차트 조회 | 500만 건 합성 데이터 · 장르 조건 조회 | 65,421ms | 178.37ms |
+| 차트 조회 | 500만 건 합성 데이터 · 반복 요청 적중 경로 | 11,386ms | 16.73ms |
+| 평점 집계 조회 | 동일 릴리즈 1건 · 유저 10,000명 · 평점 10,000건 | 806ms | 20ms |
+| 평점 등록 응답 | 동일 릴리즈 100건 동시 등록 평균 | 126ms | 12.95ms |
 
----
+### 배치 / 처리 성능
 
-### 2. [유저 가중치 변경이 만드는 쓰기 증폭을 줄이기 위한 구조 재설계](./portfolio/user-credibility-batch.md)
+모든 수치는 로컬 환경 기준입니다.  
 
-- **문제:** 유저 통계를 애플리케이션 메모리로 전부 계산하고, 가중치 변경이 과거 평점 재기록으로 번지면서 배치 비용이 커졌습니다.
-- **해결:** 통계 계산을 SQL 집계로 바꾸고, 전체 처리는 Spring Batch 청크 배치로 재구성했으며, 가중치 변경의 직접 쓰기 범위를 다시 잘랐습니다.
-- **결과:** 가중치 변경이 과거 평점 재기록으로 번지지 않게 직접 쓰기 범위를 좁혔고, 전체 배치도 재시작 가능한 구조로 바꿨습니다. 유저 통계 계산은 `10,420ms -> 1,138ms`, 전체 배치는 `921,000ms -> 359,200ms`로 줄었고 힙 변동도 `512MB 이상 -> 10MB 미만`으로 낮췄습니다.
+| 항목 | 데이터 규모 · 조건 | Before | After |
+|---|---|---:|---:|
+| 차트 재생성 배치 | 500만 건 집계 기준 환산 | 약 87.9분 | 약 23.9분 |
+| 유저 가중치 배치 | 유저 50,000명 · 평점 5,000,000건 합성 데이터 | 921,000ms | 359,200ms |
 
----
+### 정합성 / 운영 설계
 
-### 3. [차트 공개 기준점을 세워 공개 지표 신뢰도 지키기](./portfolio/chart-pipeline.md)
+- **차트 공개 파이프라인 분리**: 생성, 검증, 공개, 서빙을 나눠 Redis 공개 버전, 갱신 시각, Elasticsearch alias, API 응답이 같은 공개 기준을 따르도록 만들었습니다.
+- **검수 대기열 운영화**: 담당 전환, 점유 회수, SLA 기준을 응답과 메트릭에 함께 노출해 backlog를 시스템 안에서 읽을 수 있게 만들었습니다.
+- **적립 원장 분리**: 승인과 적립을 분리하고, 중복 적립, 정책 차단, 취소를 원장 기록으로 설명할 수 있게 만들었습니다.
+- **정산 상태 모델링**: 총 적립 잔액과 정산 가능 금액을 분리하고, 타임아웃과 늦은 실패를 미확정과 조정 기록으로 추적할 수 있게 만들었습니다.
 
-- **문제:** 배치가 끝났더라도 검색, 캐시, API 응답이 서로 다른 버전을 보여주면 사용자가 같은 차트를 보고 있다고 말할 수 없었습니다.
-- **해결:** 차트 생성, 검증, 공개, 서빙 단계를 분리하고, 공개 시점에는 모든 응답 경로가 같은 기준 버전을 따르도록 재구성했습니다.
-- **결과:** 공개 실패와 롤백 경계를 분리했고, 공개 이후 캐시·검색·API 응답이 같은 버전을 가리키도록 맞췄습니다.
+## 📚 Documents
 
----
+| 문서 | 핵심 주제 |
+|---|---|
+| [유저 가중치 변경이 만드는 쓰기 증폭을 줄이기 위한 구조 재설계](./portfolio/user-credibility-batch.md) | Spring Batch / write path / 유저 가중치 |
+| [평점 집계 계층을 분리하고 결과적 일관성으로 수렴시키기](./portfolio/rating-aggregation.md) | rating summary / RabbitMQ / Anti-Entropy |
+| [차트 재생성 배치 비용을 줄이기](./portfolio/chart-batch-performance.md) | chart batch / stage write / ES source fetch |
+| [차트 생성·검증·공개를 분리해 공개 지표 신뢰도 지키기](./portfolio/chart-pipeline.md) | publish pipeline / 공개 버전 / rollback |
+| [차트 API 조회 경로를 캐시·검색·폴백·메타데이터로 분리해 응답 병목 줄이기](./portfolio/chart-serving.md) | Redis / Elasticsearch / MySQL fallback |
+| [검수 적체와 담당 전환을 현재 상태·운영 이력·SLA로 관리하는 검수 대기열](./portfolio/moderation-queue.md) | moderation queue / backlog / SLA |
+| [승인과 적립을 분리해 보상 상태를 설명하는 적립 원장](./portfolio/reward-ledger.md) | outbox / ledger / idempotency |
+| [외부 지급을 설명 가능한 상태로 다루는 정산 모델](./portfolio/settlement-pay-and-reconcile.md) | payout / reconcile / state transition |
 
-### 4. [차트 API 조회 경로를 캐시·검색·폴백·메타데이터로 분리해 응답 병목 줄이기](./portfolio/chart-serving.md)
+## 🔍 Flow Diagrams
 
-- **문제:** 조인 비용, JSON 다중값 필터, 캐시 미스, 갱신 시각 조회 병목이 한 응답 경로에 겹쳐 있어 차트 API가 탐색형 조회를 버티지 못했습니다.
-- **해결:** 응답 캐시, 검색, MySQL 폴백, 메타데이터 조회를 분리하고 단계별 병목을 순서대로 제거했습니다.
-- **결과:** 장르 필터 미스 경로는 `65,421ms -> 178.37ms`, 반복 요청 적중 경로는 `11,386ms -> 16.73ms`로 개선했습니다.
+### 평점 흐름
 
----
+```mermaid
+%%{init: {'theme':'base'}}%%
+flowchart LR
+    U[사용자]
+    API[평점 등록·수정·삭제]
+    RAW[평점 원본 저장]
+    EVT[평점 이벤트 생성]
+    MQ[RabbitMQ]
+    SUM[평점 집계 갱신]
+    ACT[유저 활동 갱신]
+    FIX[전체 재집계 보정]
 
-### 5. [검수 적체와 담당 전환을 설명할 수 있게 만든 검수 대기열](./portfolio/moderation-queue.md)
+    U --> API
+    API --> RAW
+    RAW --> EVT
+    EVT -.-> MQ
 
-- **문제:** 검수 적체, 점유 방치, 담당 전환을 운영자가 수동으로 감당하고 있어 대기열 상태를 시스템 안에서 설명하기 어려웠습니다.
-- **해결:** 현재 상태와 운영 이력을 분리하고, 점유 회수, 재배정, SLA 집계 기준을 대기열 구조 안으로 가져왔습니다.
-- **결과:** 검수 적체와 담당 전환 사유를 메트릭과 이력으로 함께 추적할 수 있는 운영형 대기열로 바꿨습니다.
+    MQ -.-> SUM
+    MQ -.-> ACT
+    FIX -.-> SUM
 
----
+    classDef process fill:#eaf4ff,stroke:#5b8def,color:#1f2937,stroke-width:1.2px;
+    classDef batch fill:#fff4cc,stroke:#d4a017,color:#1f2937,stroke-width:1.2px;
+    classDef external fill:#e8f7e8,stroke:#58a55c,color:#1f2937,stroke-width:1.2px;
+    classDef recovery fill:#fdecec,stroke:#d96b6b,color:#1f2937,stroke-width:1.2px;
 
-### 6. [승인과 적립을 분리해 보상 상태를 설명하는 적립 원장](./portfolio/reward-ledger.md)
+    class API,RAW,EVT,SUM,ACT process;
+    class MQ batch;
+    class U external;
+    class FIX recovery;
+```
 
-- **문제:** 승인과 적립을 같은 트랜잭션으로 묶으면, 정책 차단과 보상 상태를 분리해 설명하기 어려웠습니다.
-- **해결:** 검수는 승인 사실만 넘기고, 적립은 별도 원장에서 중복, 차단, 취소를 기록하도록 경계를 분리했습니다.
-- **결과:** 같은 승인 이벤트 재전달, 한도 초과, 취소를 모두 원장 기록으로 남겨 보상 상태를 설명할 수 있게 했습니다.
+### 차트 흐름
 
----
+#### 차트 배치·공개
 
-### 7. [외부 지급을 설명 가능한 상태로 다루는 정산 모델](./portfolio/settlement-pay-and-reconcile.md)
+```mermaid
+%%{init: {'theme':'base'}}%%
+flowchart LR
+    RS[평점 집계]
+    BATCH[차트 배치 계산]
+    CAND[후보 버전 준비]
+    CHECK[검증]
+    PUBLISH[공개 전환]
+    MYSQL[(MySQL 공개 차트 데이터)]
+    ES[(Elasticsearch 공개 인덱스)]
+    REDIS[(Redis 메타·캐시)]
+    STOP[공개 중단]
+    ROLLBACK[이전 버전 복구]
 
-- **문제:** 외부 지급은 타임아웃과 늦은 실패가 가능해, 단순 잔액 차감만으로는 지금 상태를 끝까지 설명할 수 없었습니다.
-- **해결:** 정산을 요청, 예약, 미확정, 조정 기록이 이어지는 상태 모델로 바꾸고, 지급 가능 금액과 총 적립 잔액도 분리해 다뤘습니다.
-- **결과:** 성공 뒤 늦은 실패까지 기존 기록을 덮어쓰지 않고 후속 조정으로 추적할 수 있게 했습니다.
+    RS --> BATCH --> CAND --> CHECK
+    CHECK -->|검증 성공| PUBLISH
+    CHECK -.->|검증 실패| STOP
+
+    PUBLISH --> MYSQL
+    PUBLISH --> ES
+    PUBLISH --> REDIS
+    PUBLISH -.->|공개 전환 실패 시| ROLLBACK
+
+    classDef process fill:#eaf4ff,stroke:#5b8def,color:#1f2937,stroke-width:1.2px;
+    classDef batch fill:#fff4cc,stroke:#d4a017,color:#1f2937,stroke-width:1.2px;
+    classDef store fill:#f3f4f6,stroke:#9ca3af,color:#1f2937,stroke-width:1.2px;
+    classDef recovery fill:#fdecec,stroke:#d96b6b,color:#1f2937,stroke-width:1.2px;
+
+    class RS,CHECK,PUBLISH process;
+    class BATCH,CAND batch;
+    class MYSQL,ES,REDIS store;
+    class STOP,ROLLBACK recovery;
+```
+
+#### 차트 조회·서빙
+
+```mermaid
+%%{init: {'theme':'base'}}%%
+flowchart LR
+    USER[사용자]
+    API[차트 조회 API]
+    REDIS[(Redis 응답 캐시)]
+    ES[(Elasticsearch 검색)]
+    MYSQL[(MySQL 공개 차트 데이터)]
+    RESP[차트 응답]
+
+    USER --> API --> REDIS
+    REDIS -->|cache hit| RESP
+    REDIS -->|cache miss| ES
+    ES -->|검색 결과 기준 조회| MYSQL
+    ES -.->|검색 실패 시 fallback| MYSQL
+    MYSQL --> RESP
+
+    classDef process fill:#eaf4ff,stroke:#5b8def,color:#1f2937,stroke-width:1.2px;
+    classDef store fill:#f3f4f6,stroke:#9ca3af,color:#1f2937,stroke-width:1.2px;
+    classDef external fill:#e8f7e8,stroke:#58a55c,color:#1f2937,stroke-width:1.2px;
+
+    class API,RESP process;
+    class REDIS,ES,MYSQL store;
+    class USER external;
+```
+
+### 승인 · 적립 · 정산 흐름
+
+#### 검수·승인·적립
+
+```mermaid
+%%{init: {'theme':'base'}}%%
+flowchart LR
+    CAT[카탈로그 등록 요청]
+    REV[리뷰 게시 요청]
+    QUEUE[검수 대기열]
+    CLAIM[검수 항목 점유]
+    REVIEW[검수 처리]
+    EXPIRE[점유 만료 복구]
+    APPROVE[승인]
+    REJECT[반려]
+    ROUTBOX[적립 outbox]
+    RMQ[RabbitMQ]
+    LEDGER[적립 원장]
+    RETRY[적립 재시도]
+
+    CAT --> QUEUE
+    REV --> QUEUE
+    QUEUE --> CLAIM --> REVIEW
+
+    EXPIRE -.-> QUEUE
+
+    REVIEW -->|승인| APPROVE
+    REVIEW -->|반려| REJECT
+
+    APPROVE --> ROUTBOX
+    ROUTBOX -.-> RMQ
+    RMQ -.-> LEDGER
+    RETRY -.-> ROUTBOX
+
+    classDef process fill:#eaf4ff,stroke:#5b8def,color:#1f2937,stroke-width:1.2px;
+    classDef batch fill:#fff4cc,stroke:#d4a017,color:#1f2937,stroke-width:1.2px;
+    classDef recovery fill:#fdecec,stroke:#d96b6b,color:#1f2937,stroke-width:1.2px;
+
+    class CAT,REV,QUEUE,CLAIM,REVIEW,APPROVE,REJECT,LEDGER process;
+    class ROUTBOX,RMQ batch;
+    class EXPIRE,RETRY recovery;
+```
+
+#### 정산 요청·지급·보정
+
+```mermaid
+%%{init: {'theme':'base'}}%%
+flowchart LR
+    LEDGER[적립 원장]
+    BAL[정산 가능 금액 계산]
+    REQ[정산 요청]
+    SOUTBOX[지급 outbox]
+    RETRY[지급 재시도]
+    PAY[지급 게이트웨이]
+    WEB[웹훅·대사]
+    DONE[정산 완료]
+    FAIL[실패 처리·예약 해제]
+    ADJ[정산 조정]
+
+    LEDGER --> BAL --> REQ --> SOUTBOX
+    RETRY -.-> SOUTBOX
+    SOUTBOX -.-> PAY
+
+    PAY -->|성공| DONE
+    PAY -->|실패| FAIL
+    PAY -->|미확정| WEB
+
+    WEB -->|성공 확정| DONE
+    WEB -->|실패 확정| FAIL
+    WEB -->|사후 실패| ADJ
+
+    ADJ --> BAL
+
+    classDef process fill:#eaf4ff,stroke:#5b8def,color:#1f2937,stroke-width:1.2px;
+    classDef batch fill:#fff4cc,stroke:#d4a017,color:#1f2937,stroke-width:1.2px;
+    classDef external fill:#e8f7e8,stroke:#58a55c,color:#1f2937,stroke-width:1.2px;
+    classDef recovery fill:#fdecec,stroke:#d96b6b,color:#1f2937,stroke-width:1.2px;
+
+    class LEDGER,BAL,REQ,DONE process;
+    class SOUTBOX,WEB batch;
+    class PAY external;
+    class RETRY,FAIL,ADJ recovery;
+```
+
+#### 정산 상태 전이
+
+```mermaid
+stateDiagram-v2
+    state "요청 생성" as REQUESTED
+    state "예약 완료" as RESERVED
+    state "지급 요청 전송" as SENT
+    state "지급 미확정" as UNKNOWN
+    state "정산 완료" as SUCCEEDED
+    state "정산 실패" as FAILED
+    state "조정 필요" as NEEDS_ADJUSTMENT
+
+    [*] --> REQUESTED
+    REQUESTED --> RESERVED
+
+    RESERVED --> SENT
+    RESERVED --> UNKNOWN
+    RESERVED --> FAILED
+
+    SENT --> SUCCEEDED
+    SENT --> UNKNOWN
+    SENT --> FAILED
+
+    UNKNOWN --> SUCCEEDED
+    UNKNOWN --> FAILED
+
+    SUCCEEDED --> NEEDS_ADJUSTMENT
+```
